@@ -12,6 +12,10 @@ export type PendingItem = {
   id: string;
   customerName: string;
   pendingType: PendingType;
+
+  // ✅ FIX FOR VERCEL BUILD ERROR
+  createdAt?: Date;
+
   timePending: string;
   label: string;
   value?: string;
@@ -19,6 +23,10 @@ export type PendingItem = {
   // NEW (safe, optional)
   invoiceDueDate?: string;
   paymentStage?: "advance" | "balance";
+
+  // optional future use
+  whatsapp?: string;
+  rfqNumber?: string;
 };
 
 const bgMap: Record<PendingType, string> = {
@@ -37,12 +45,14 @@ function getPaymentReminder(dueDate?: string) {
 
   const now = new Date();
   const due = new Date(dueDate);
+
   const diff = Math.ceil(
     (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   if (diff < 0) return `Payment overdue by ${Math.abs(diff)} days`;
   if (diff <= 7) return `Payment due in ${diff} days`;
+
   return null;
 }
 
@@ -68,13 +78,13 @@ export function DealCard({
         hover:shadow-md hover:scale-[1.01]
         border border-slate-200/60`}
     >
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="font-medium text-slate-800">
+      <div className="flex justify-between items-start gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-slate-800 truncate">
             {item.customerName}
           </p>
 
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-slate-600 mt-1 break-words">
             {item.label}
           </p>
 
@@ -86,7 +96,7 @@ export function DealCard({
           )}
         </div>
 
-        <span className="text-xs text-slate-500 whitespace-nowrap">
+        <span className="text-xs text-slate-500 whitespace-nowrap shrink-0">
           {item.timePending}
         </span>
       </div>
