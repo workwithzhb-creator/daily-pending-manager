@@ -16,7 +16,6 @@ import {
 import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
 import { MigrationModal } from "@/components/migration-modal";
-import { AuthSheet } from "@/components/auth-sheet";
 import { createClient } from "@/lib/supabase/client";
 
 /* ---------------- MOCK DATA ---------------- */
@@ -178,7 +177,6 @@ export default function Page() {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showMigrationModal, setShowMigrationModal] = useState(false);
-  const [showAuthSheet, setShowAuthSheet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
 
@@ -195,67 +193,38 @@ export default function Page() {
       } = await supabase.auth.getUser();
 
       if (!currentUser) {
-        setShowAuthSheet(true);
+        setUser(null);
+        setItems([]);
         setLoading(false);
+        // Onboarding: show once for guests using localStorage
+        if (typeof window !== "undefined" && localStorage.getItem("dp_onboarding_done") !== "yes") {
+          setShowOnboarding(true);
+        }
         return;
       }
 
       setUser(currentUser);
-      setShowAuthSheet(false);
 
-      // Load profile from Supabase
+      // Load profile from Supabase only (no localStorage)
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("*")
-        .eq("user_id", user.id)
+        .select("name, company_name, mobile")
+        .eq("user_id", currentUser.id)
         .single();
 
-      if (profileData) {
-        // Load from localStorage if available for full profile data
-        const savedProfile = localStorage.getItem("dp_user_profile");
-        if (savedProfile) {
-          try {
-            const parsed = JSON.parse(savedProfile);
-            setProfile(parsed);
-          } catch {
-            // If parsing fails, create minimal profile from Supabase data
-            setProfile({
-              name: profileData.name || "",
-              countryCode: "+966",
-              whatsapp: "",
-            });
-          }
-        } else {
-          // Create minimal profile from Supabase data
-          setProfile({
-            name: profileData.name || "",
-            countryCode: "+966",
-            whatsapp: "",
-          });
-        }
-      } else {
-        // Fallback to localStorage for migration
-        const savedProfile = localStorage.getItem("dp_user_profile");
-        if (savedProfile) {
-          try {
-            const parsed = JSON.parse(savedProfile);
-            setProfile(parsed);
-            // Save to Supabase
-            await supabase.from("profiles").insert({
-              user_id: user.id,
-              name: parsed.name || "",
-            });
-          } catch {
-            localStorage.removeItem("dp_user_profile");
-          }
-        }
+      if (profileData?.name || profileData?.company_name || profileData?.mobile) {
+        setProfile({
+          name: profileData.name || "",
+          countryCode: "+966",
+          whatsapp: profileData.mobile || "",
+        });
       }
 
       // Load plan from Supabase
       const { data: planData } = await supabase
         .from("user_plans")
         .select("plan")
-        .eq("user_id", user.id)
+        .eq("user_id", currentUser.id)
         .single();
 
       if (planData && (planData.plan === "basic" || planData.plan === "free")) {
@@ -266,13 +235,13 @@ export default function Page() {
         if (savedPlan === "basic" || savedPlan === "free") {
           setPlan(savedPlan);
           await supabase.from("user_plans").upsert({
-            user_id: user.id,
+            user_id: currentUser.id,
             plan: savedPlan,
           });
         } else {
           setPlan("free");
           await supabase.from("user_plans").upsert({
-            user_id: user.id,
+            user_id: currentUser.id,
             plan: "free",
           });
         }
@@ -324,23 +293,9 @@ export default function Page() {
         setLoading(false);
       }
 
-      // First-time onboarding: show only once
-      const { data: onboardingData } = await supabase
-        .from("user_settings")
-        .select("onboarding_done")
-        .eq("user_id", currentUser.id)
-        .single();
-
-      if (!onboardingData?.onboarding_done) {
-        const localOnboarding = localStorage.getItem("dp_onboarding_done");
-        if (localOnboarding === "yes") {
-          await supabase.from("user_settings").upsert({
-            user_id: currentUser.id,
-            onboarding_done: true,
-          });
-        } else {
-          setShowOnboarding(true);
-        }
+      // First-time onboarding for logged-in users: show once (localStorage)
+      if (typeof window !== "undefined" && localStorage.getItem("dp_onboarding_done") !== "yes") {
+        setShowOnboarding(true);
       }
     }
 
@@ -352,11 +307,9 @@ export default function Page() {
     } = supabase.auth.onAuthStateChange((event: string, session: any) => {
       if (event === "SIGNED_IN" && session) {
         setUser(session.user);
-        setShowAuthSheet(false);
         loadData();
       } else if (event === "SIGNED_OUT") {
         setUser(null);
-        setShowAuthSheet(true);
         setItems([]);
         setProfile(null);
       }
@@ -402,39 +355,21 @@ export default function Page() {
     }
   }, [items, loading, user, supabase]);
 
-  async function dismissOnboarding() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      await supabase.from("user_settings").upsert({
-        user_id: user.id,
-        onboarding_done: true,
-      });
+  function dismissOnboarding() {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("dp_onboarding_done", "yes");
     }
-
-    localStorage.setItem("dp_onboarding_done", "yes");
     setShowOnboarding(false);
   }
 
   async function handleSaveProfile(data: UserProfile) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      await supabase.from("profiles").upsert({
-        user_id: user.id,
-        name: data.name || "",
-      });
-    }
-
-    // Also save to localStorage for backward compatibility
-    localStorage.setItem("dp_user_profile", JSON.stringify(data));
+    if (!user) return;
+    await supabase.from("profiles").upsert({
+      user_id: user.id,
+      name: data.name || "",
+    });
     setProfile(data);
     setShowProfileSetup(false);
-
     if (pendingRFQOpen) {
       setPendingRFQOpen(false);
       setShowAddRFQ(true);
@@ -568,12 +503,6 @@ export default function Page() {
     setUser(null);
     setItems([]);
     setProfile(null);
-    setShowAuthSheet(true);
-  }
-
-  function handleAuthSuccess() {
-    // Auth success will trigger auth state change listener
-    // which will reload data
   }
 
   /* ---------------- RFQ SAVE ---------------- */
@@ -582,10 +511,7 @@ export default function Page() {
     .length;
 
   async function handleSaveRFQ(data: RFQPayload) {
-    if (!user) {
-      setShowAuthSheet(true);
-      return;
-    }
+    if (!user) return;
 
     if (plan === "free" && activeTaskCount >= 10) {
       setShowAddRFQ(false);
@@ -873,6 +799,9 @@ export default function Page() {
     visibleItems = visibleItems.filter((i) => i.pendingType === activeStage);
   }
 
+  const completedCount = items.filter((i) => i.pendingType === "completed").length;
+  const totalCount = items.length;
+
   const hideFooter =
     selectedItem !== null ||
     showAddRFQ ||
@@ -925,18 +854,15 @@ export default function Page() {
   /* ---------------- ADD RFQ CLICK ---------------- */
 
   function handleAddRFQClick() {
-    if (!profile) {
-      setPendingRFQOpen(true);
-      setShowProfileSetup(true);
+    if (!user) {
+      router.push("/login");
       return;
     }
-
     if (plan === "free" && activeTaskCount >= 10) {
       setPendingRFQOpen(true);
       setShowUpgradeSheet(true);
       return;
     }
-
     setShowAddRFQ(true);
   }
 
@@ -992,19 +918,19 @@ export default function Page() {
           onClick={handleOpenProfile}
           className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-white font-semibold hover:opacity-90 active:scale-95 transition-all cursor-pointer"
         >
-          {profile?.name ? profile.name.charAt(0).toUpperCase() : "A"}
+          {profile?.name
+            ? profile.name.charAt(0).toUpperCase()
+            : user?.email?.charAt(0).toUpperCase() ?? "A"}
         </button>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">
-              {user
-                ? profile?.name
-                  ? `${getGreeting()}, ${profile.name}`
-                  : user.email
-                  ? `${getGreeting()}, ${user.email.split("@")[0]}`
-                  : getGreeting()
-                : "Welcome"}
+              {profile?.name
+                ? `${getGreeting()}, ${profile.name}`
+                : user?.email
+                ? `${getGreeting()}, ${user.email.split("@")[0]}`
+                : getGreeting()}
             </h1>
             <span
               className={`
@@ -1028,7 +954,7 @@ export default function Page() {
 
       <main className="px-6 pb-32 max-w-lg mx-auto space-y-8">
         <div ref={summaryCardsRef} className="flex items-center gap-4">
-          <ProgressRing completed={todayCompletedCount} total={todayTotalCount} />
+          <ProgressRing completed={completedCount} total={totalCount} />
           <SummaryCards
             urgent={urgent}
             today={today}
@@ -1074,7 +1000,7 @@ export default function Page() {
             {visibleItems.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-slate-500 text-sm">
-                  {user ? "No tasks yet" : "Sign in to manage your tasks"}
+                  {user ? "No tasks yet" : "Sign in to start tracking your RFQs."}
                 </p>
               </div>
             ) : (
@@ -1211,8 +1137,6 @@ export default function Page() {
           onSkip={handleMigrationSkip}
         />
 
-        {/* Auth Sheet */}
-        <AuthSheet open={showAuthSheet} onSuccess={handleAuthSuccess} />
       </div>
     </div>
   );

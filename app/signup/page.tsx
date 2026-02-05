@@ -1,35 +1,91 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
+const COUNTRY_OPTIONS = [
+  { code: "+966", flag: "🇸🇦", tz: "Asia/Riyadh" },
+  { code: "+971", flag: "🇦🇪", tz: "Asia/Dubai" },
+  { code: "+974", flag: "🇶🇦", tz: "Asia/Qatar" },
+  { code: "+965", flag: "🇰🇼", tz: "Asia/Kuwait" },
+  { code: "+973", flag: "🇧🇭", tz: "Asia/Bahrain" },
+  { code: "+968", flag: "🇴🇲", tz: "Asia/Muscat" },
+  { code: "+91", flag: "🇮🇳", tz: "" },
+] as const;
+
+function getDefaultCountryCode(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const found = COUNTRY_OPTIONS.find((c) => c.tz && c.tz === tz);
+    return found ? found.code : "+91";
+  } catch {
+    return "+91";
+  }
+}
+
 export default function SignupPage() {
+  const [name, setName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
+  const [mobileNumber, setMobileNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
+  useEffect(() => {
+    setCountryCode(getDefaultCountryCode());
+  }, []);
+
+  const selectedCountry = COUNTRY_OPTIONS.find((c) => c.code === countryCode);
+
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
+    const digits = mobileNumber.replace(/\D/g, "");
+    if (!digits.trim()) {
+      setError("Mobile number is required");
+      return;
+    }
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signUp({
+    const mobileFull = countryCode + digits;
+
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (signUpError) {
+      setError(signUpError.message);
       setLoading(false);
-    } else {
-      router.push("/");
-      router.refresh();
+      return;
     }
+
+    const user = authData?.user;
+    if (user?.id) {
+      const { error: profileError } = await supabase.from("profiles").insert({
+        user_id: user.id,
+        name: name.trim() || null,
+        company_name: companyName.trim() || null,
+        mobile: mobileFull,
+        created_at: new Date().toISOString(),
+      });
+
+      if (profileError) {
+        setError(profileError.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    router.push("/");
+    router.refresh();
   }
 
   return (
@@ -48,6 +104,106 @@ export default function SignupPage() {
         {/* Form Card */}
         <div className="rounded-3xl bg-white/80 backdrop-blur-xl shadow-xl border border-white/60 p-6">
           <form onSubmit={handleSignup} className="space-y-4">
+            {/* Name */}
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                placeholder="Your name"
+                disabled={loading}
+              />
+            </div>
+
+            {/* Company Name */}
+            <div>
+              <label
+                htmlFor="company"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
+                Company Name
+              </label>
+              <input
+                id="company"
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                placeholder="Your company"
+                disabled={loading}
+              />
+            </div>
+
+            {/* Mobile Number */}
+            <div>
+              <label
+                htmlFor="mobile"
+                className="block text-sm font-medium text-slate-700 mb-2"
+              >
+                Mobile Number <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                <div className="relative shrink-0 w-[95px]">
+                  <button
+                    type="button"
+                    onClick={() => setShowCountryDropdown((v) => !v)}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-1 w-[95px] rounded-xl bg-white py-3 text-sm shadow-sm ring-1 ring-slate-200/70 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                  >
+                    <span className="text-base">{selectedCountry?.flag ?? "🇮🇳"}</span>
+                    <span className="text-slate-600 text-xs font-medium">{selectedCountry?.code ?? "+91"}</span>
+                    <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showCountryDropdown && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowCountryDropdown(false)}
+                        aria-hidden
+                      />
+                      <div className="absolute left-0 top-full mt-1 z-20 w-[95px] rounded-xl bg-white shadow-lg py-1 ring-1 ring-slate-200/70 max-h-52 overflow-auto">
+                        {COUNTRY_OPTIONS.map((c) => (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => {
+                              setCountryCode(c.code);
+                              setShowCountryDropdown(false);
+                            }}
+                            className="w-full flex items-center justify-center gap-1 px-2 py-2 text-sm hover:bg-slate-50 transition"
+                          >
+                            <span className="text-base">{c.flag}</span>
+                            <span className="text-slate-600 text-xs">{c.code}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <input
+                  id="mobile"
+                  type="tel"
+                  inputMode="numeric"
+                  value={mobileNumber}
+                  onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                  required
+                  className="flex-1 min-w-0 rounded-xl bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-slate-200/70 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                  placeholder="5 0123 4567"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
             {/* Email */}
             <div>
               <label
@@ -64,6 +220,7 @@ export default function SignupPage() {
                 required
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                 placeholder="you@example.com"
+                disabled={loading}
               />
             </div>
 
@@ -84,6 +241,7 @@ export default function SignupPage() {
                 minLength={6}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                 placeholder="At least 6 characters"
+                disabled={loading}
               />
             </div>
 

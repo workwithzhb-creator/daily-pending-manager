@@ -2,16 +2,26 @@
 
 import { useEffect, useState } from "react";
 
-/* --- COUNTRY CODES --- */
-const COUNTRY_CODES = [
-  { code: "+966", label: "Saudi Arabia" },
-  { code: "+971", label: "UAE" },
-  { code: "+974", label: "Qatar" },
-  { code: "+965", label: "Kuwait" },
-  { code: "+973", label: "Bahrain" },
-  { code: "+968", label: "Oman" },
-  { code: "+91", label: "India" },
-];
+/* --- COUNTRY CODES (flag + code only) --- */
+const COUNTRY_OPTIONS = [
+  { code: "+966", flag: "🇸🇦", tz: "Asia/Riyadh" },
+  { code: "+971", flag: "🇦🇪", tz: "Asia/Dubai" },
+  { code: "+974", flag: "🇶🇦", tz: "Asia/Qatar" },
+  { code: "+965", flag: "🇰🇼", tz: "Asia/Kuwait" },
+  { code: "+973", flag: "🇧🇭", tz: "Asia/Bahrain" },
+  { code: "+968", flag: "🇴🇲", tz: "Asia/Muscat" },
+  { code: "+91", flag: "🇮🇳", tz: "" },
+] as const;
+
+function getDefaultCountryCode(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const found = COUNTRY_OPTIONS.find((c) => c.tz && c.tz === tz);
+    return found ? found.code : "+91";
+  } catch {
+    return "+91";
+  }
+}
 
 export type UserProfile = {
   name: string;
@@ -35,8 +45,9 @@ export function ProfileSetupSheet({
   
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
-  const [countryCode, setCountryCode] = useState("+966");
+  const [countryCode, setCountryCode] = useState("+91");
   const [whatsapp, setWhatsapp] = useState("");
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -49,12 +60,13 @@ export function ProfileSetupSheet({
         const phoneWithoutCode = initialData.whatsapp?.replace(initialData.countryCode || "", "") || "";
         setWhatsapp(phoneWithoutCode);
       } else {
-        // Setup mode: clear fields
+        // Setup mode: clear fields, default country from timezone
         setName("");
         setCompany("");
         setWhatsapp("");
-        setCountryCode("+966");
+        setCountryCode(getDefaultCountryCode());
       }
+      setShowCountryDropdown(false);
     }
   }, [open, isEditMode, initialData]);
 
@@ -73,7 +85,7 @@ export function ProfileSetupSheet({
 
   if (!open) return null;
 
-  const canSave = name.trim() !== "" && whatsapp.trim() !== "";
+  const canSave = name.trim() !== "" && whatsapp.replace(/\D/g, "").trim() !== "";
 
   return (
     <div className="fixed inset-0 z-50">
@@ -176,34 +188,47 @@ export function ProfileSetupSheet({
             />
 
             <div className="flex gap-2">
-              <select
-                value={countryCode}
-                onChange={(e) => setCountryCode(e.target.value)}
-                className="
-                  rounded-2xl
-                  bg-white/80
-                  px-3 py-3
-                  text-sm text-slate-800
-                  shadow-sm
-                  outline-none
-                  ring-1 ring-slate-200/70
-                  focus:ring-2 focus:ring-indigo-400
-                  transition
-                "
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} {c.label}
-                  </option>
-                ))}
-              </select>
-
+              <div className="relative shrink-0 w-[95px]">
+                <button
+                  type="button"
+                  onClick={() => setShowCountryDropdown((v) => !v)}
+                  className="flex items-center justify-center gap-1 w-[95px] rounded-xl bg-white/80 py-3 text-sm shadow-sm ring-1 ring-slate-200/70 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                >
+                  <span className="text-base">{COUNTRY_OPTIONS.find((c) => c.code === countryCode)?.flag ?? "🇮🇳"}</span>
+                  <span className="text-slate-600 text-xs font-medium">{countryCode}</span>
+                  <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showCountryDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowCountryDropdown(false)} aria-hidden />
+                    <div className="absolute left-0 top-full mt-1 z-20 w-[95px] rounded-xl bg-white shadow-lg py-1 ring-1 ring-slate-200/70 max-h-52 overflow-auto">
+                      {COUNTRY_OPTIONS.map((c) => (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => {
+                            setCountryCode(c.code);
+                            setShowCountryDropdown(false);
+                          }}
+                          className="w-full flex items-center justify-center gap-1 px-2 py-2 text-sm hover:bg-slate-50 transition"
+                        >
+                          <span className="text-base">{c.flag}</span>
+                          <span className="text-slate-600 text-xs">{c.code}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <input
                 value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                placeholder="Your WhatsApp number"
+                onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                placeholder="5 0123 4567"
+                inputMode="numeric"
                 className="
-                  flex-1 rounded-2xl
+                  flex-1 min-w-0 rounded-xl
                   bg-white/80
                   px-4 py-3
                   text-sm text-slate-800
