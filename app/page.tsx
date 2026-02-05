@@ -295,6 +295,8 @@ export default function Page() {
         createdAt: new Date(),
         timePending: "",
         label: data.note || data.rfqNumber,
+        whatsapp: data.whatsapp,
+        rfqNumber: data.rfqNumber,
       },
       ...prev,
     ]);
@@ -382,8 +384,21 @@ export default function Page() {
 
   /* ---------------- COUNTS ---------------- */
 
+  function isCreatedToday(createdAt?: Date): boolean {
+    if (!createdAt) return false;
+    const now = new Date();
+    const created = new Date(createdAt);
+    return (
+      now.getFullYear() === created.getFullYear() &&
+      now.getMonth() === created.getMonth() &&
+      now.getDate() === created.getDate()
+    );
+  }
+
   let urgent = 0;
   let today = 0;
+  let todayTotalCount = 0;
+  let todayCompletedCount = 0;
 
   items.forEach((i) => {
     const { days, daysUntil } = getItemDays(i);
@@ -402,6 +417,25 @@ export default function Page() {
       } else {
         today++;
       }
+    }
+
+    // Calculate today tasks for ProgressRing
+    const isTodayTask =
+      days === 0 ||
+      (i.pendingType === "paymentFollowup" &&
+        i.invoiceDueDate &&
+        daysUntil !== undefined &&
+        daysUntil >= 0 &&
+        daysUntil <= 7);
+
+    // Count today tasks (excluding completed)
+    if (isTodayTask && i.pendingType !== "completed") {
+      todayTotalCount++;
+    }
+
+    // Count completed tasks created today
+    if (i.pendingType === "completed" && isCreatedToday(i.createdAt)) {
+      todayCompletedCount++;
     }
   });
 
@@ -548,7 +582,7 @@ export default function Page() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">
-              {getGreeting()}, {profile?.name || "Ahmed"}
+              {profile?.name ? `${getGreeting()}, ${profile.name}` : getGreeting()}
             </h1>
             <span
               className={`
@@ -572,7 +606,7 @@ export default function Page() {
 
       <main className="px-6 pb-32 max-w-lg mx-auto space-y-8">
         <div ref={summaryCardsRef} className="flex items-center gap-4">
-          <ProgressRing completed={0} total={items.length} />
+          <ProgressRing completed={todayCompletedCount} total={todayTotalCount} />
           <SummaryCards
             urgent={urgent}
             today={today}

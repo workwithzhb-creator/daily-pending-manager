@@ -102,9 +102,12 @@ export function ItemDetailSheet({
     item.pendingType === "followup" ||
     item.pendingType === "paymentFollowup";
 
-  const whatsappUrl = `https://wa.me/${item.whatsapp || ""}?text=${getWhatsAppMessage(
-    item.pendingType
-  )}`;
+  const hasWhatsApp = !!item.whatsapp && item.whatsapp.trim() !== "";
+  const whatsappUrl = hasWhatsApp
+    ? `https://wa.me/${item.whatsapp!.replace(/[^0-9+]/g, "")}?text=${getWhatsAppMessage(
+        item.pendingType
+      )}`
+    : "";
 
   const doneHint = getDoneHint(item.pendingType);
 
@@ -181,8 +184,8 @@ export function ItemDetailSheet({
                 📞 Call
               </a>
 
-              {/* WhatsApp - only show for basic plan */}
-              {plan === "basic" && (
+              {/* WhatsApp - always show for followup and paymentFollowup */}
+              {hasWhatsApp ? (
                 <a
                   href={whatsappUrl}
                   target="_blank"
@@ -203,6 +206,26 @@ export function ItemDetailSheet({
                   />
                   WhatsApp
                 </a>
+              ) : (
+                <button
+                  disabled
+                  className="
+                    flex-1 min-w-[140px] h-12
+                    rounded-2xl flex items-center justify-center gap-2
+                    bg-white/5 text-slate-400
+                    font-medium
+                    cursor-not-allowed
+                  "
+                >
+                  <Image
+                    src="/icons/whatsapp.png"
+                    alt="WhatsApp"
+                    width={20}
+                    height={20}
+                    className="opacity-50"
+                  />
+                  WhatsApp
+                </button>
               )}
             </>
           )}
@@ -236,6 +259,14 @@ export function ItemDetailSheet({
             ✓ Done
           </button>
         </div>
+
+        {/* WhatsApp warning */}
+        {showComms && !hasWhatsApp && (
+          <p className="mt-4 text-xs text-slate-400 flex items-start gap-2">
+            <span className="text-yellow-400">⚠</span>
+            WhatsApp number not saved
+          </p>
+        )}
 
         {/* Hint */}
         {doneHint && (
