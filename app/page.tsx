@@ -203,29 +203,25 @@ export default function Page() {
       setShowOnboarding(true);
     }
 
-    // Load items
-    const savedItems = localStorage.getItem("dp_pending_items");
+    // Load items from "dp_items"
+    const savedItems = localStorage.getItem("dp_items");
 
     if (savedItems) {
       const parsed = safeParsePendingItems(savedItems);
       if (parsed) {
         setItems(parsed);
-        return;
       } else {
-        localStorage.removeItem("dp_pending_items");
+        // If parsing fails, clear corrupted data and start empty
+        localStorage.removeItem("dp_items");
       }
     }
-
-    // If nothing saved, use mock
-    setItems(mockPendingItems);
+    // If "dp_items" does NOT exist, start with empty array (do NOT load mock)
   }, []);
 
   /* ---------------- SAVE ITEMS ALWAYS ---------------- */
 
   useEffect(() => {
-    if (items.length > 0) {
-      localStorage.setItem("dp_pending_items", JSON.stringify(items));
-    }
+    localStorage.setItem("dp_items", JSON.stringify(items));
   }, [items]);
 
   function dismissOnboarding() {
