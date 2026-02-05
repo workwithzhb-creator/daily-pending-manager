@@ -104,22 +104,16 @@ function getDaysUntilDueDate(dueDate?: string): number | null {
 }
 
 function getItemDays(item: PendingItem): { days: number; daysUntil?: number } {
-  // For paymentFollowup items with invoiceDueDate, use due date
-  if (
-    item.pendingType === "paymentFollowup" &&
-    item.invoiceDueDate
-  ) {
+  if (item.pendingType === "paymentFollowup" && item.invoiceDueDate) {
     const daysUntil = getDaysUntilDueDate(item.invoiceDueDate);
     if (daysUntil !== null) {
-      // If due date is passed (negative), return positive days overdue
-      // If due date is in future, return 0 (not overdue yet) but keep daysUntil
       return {
         days: daysUntil < 0 ? Math.abs(daysUntil) : 0,
         daysUntil,
       };
     }
   }
-  // For other items, use createdAt
+
   const days = getDaysPending(item.createdAt);
   return { days };
 }
@@ -137,10 +131,29 @@ function getTimePending(createdAt?: Date): string {
 
 type PriorityFilter = "urgent" | "today" | null;
 
+/* ---------------- STORAGE HELPERS ---------------- */
+
+function safeParsePendingItems(raw: string): PendingItem[] | null {
+  try {
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) return null;
+
+    const fixed = parsed.map((item: any) => ({
+      ...item,
+      createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
+    }));
+
+    return fixed;
+  } catch {
+    return null;
+  }
+}
+
 /* ---------------- PAGE ---------------- */
 
 export default function Page() {
-  const [items, setItems] = useState<PendingItem[]>(mockPendingItems);
+  const [items, setItems] = useState<PendingItem[]>([]);
   const [activeStage, setActiveStage] = useState<PendingType | "all">("all");
   const [activePriority, setActivePriority] = useState<PriorityFilter>(null);
   const [selectedItem, setSelectedItem] = useState<PendingItem | null>(null);
@@ -151,10 +164,8 @@ export default function Page() {
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [showAccountPlan, setShowAccountPlan] = useState(false);
 
-  // If user clicked Add RFQ but profile missing, after saving profile we open RFQ
   const [pendingRFQOpen, setPendingRFQOpen] = useState(false);
 
-  // Plan management
   const [plan, setPlan] = useState<"free" | "basic">("free");
   const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const [showFreeLimitModal, setShowFreeLimitModal] = useState(false);
@@ -165,19 +176,20 @@ export default function Page() {
   const summaryCardsRef = useRef<HTMLDivElement>(null);
   const pipelineStagesRef = useRef<HTMLDivElement>(null);
 
-  /* ---------------- LOAD PROFILE (NO AUTO POPUP) ---------------- */
+  /* ---------------- LOAD EVERYTHING ON FIRST OPEN ---------------- */
 
   useEffect(() => {
-    const saved = localStorage.getItem("dp_user_profile");
-    if (saved) {
+    // Load profile
+    const savedProfile = localStorage.getItem("dp_user_profile");
+    if (savedProfile) {
       try {
-        setProfile(JSON.parse(saved));
+        setProfile(JSON.parse(savedProfile));
       } catch {
         localStorage.removeItem("dp_user_profile");
       }
     }
 
-    // Load plan from localStorage
+    // Load plan
     const savedPlan = localStorage.getItem("dp_plan");
     if (savedPlan === "basic" || savedPlan === "free") {
       setPlan(savedPlan);
@@ -190,7 +202,31 @@ export default function Page() {
     if (localStorage.getItem("dp_onboarding_done") !== "yes") {
       setShowOnboarding(true);
     }
+
+    // Load items
+    const savedItems = localStorage.getItem("dp_pending_items");
+
+    if (savedItems) {
+      const parsed = safeParsePendingItems(savedItems);
+      if (parsed) {
+        setItems(parsed);
+        return;
+      } else {
+        localStorage.removeItem("dp_pending_items");
+      }
+    }
+
+    // If nothing saved, use mock
+    setItems(mockPendingItems);
   }, []);
+
+  /* ---------------- SAVE ITEMS ALWAYS ---------------- */
+
+  useEffect(() => {
+    if (items.length > 0) {
+      localStorage.setItem("dp_pending_items", JSON.stringify(items));
+    }
+  }, [items]);
 
   function dismissOnboarding() {
     localStorage.setItem("dp_onboarding_done", "yes");
@@ -202,7 +238,6 @@ export default function Page() {
     setProfile(data);
     setShowProfileSetup(false);
 
-    // If user originally wanted to add RFQ, open RFQ after profile saved
     if (pendingRFQOpen) {
       setPendingRFQOpen(false);
       setShowAddRFQ(true);
@@ -237,7 +272,7 @@ export default function Page() {
     localStorage.setItem("dp_plan", "basic");
     setPlan("basic");
     setShowUpgradeSheet(false);
-    // If user was trying to add RFQ, open it now
+
     if (pendingRFQOpen) {
       setPendingRFQOpen(false);
       setShowAddRFQ(true);
@@ -246,13 +281,16 @@ export default function Page() {
 
   /* ---------------- RFQ SAVE ---------------- */
 
+  const activeTaskCount = items.filter((i) => i.pendingType !== "completed")
+    .length;
+
   function handleSaveRFQ(data: RFQPayload) {
-    // Free plan: max 10 active tasks (excluding completed)
     if (plan === "free" && activeTaskCount >= 10) {
       setShowAddRFQ(false);
       setShowFreeLimitModal(true);
       return;
     }
+
     setItems((prev) => [
       {
         id: crypto.randomUUID(),
@@ -264,6 +302,7 @@ export default function Page() {
       },
       ...prev,
     ]);
+
     setShowAddRFQ(false);
   }
 
@@ -276,8 +315,7 @@ export default function Page() {
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-        
-        // Handle invoice → paymentFollowup: if coming from partial advance flow, set balance
+
         if (
           i.pendingType === "invoice" &&
           status === "paymentFollowup" &&
@@ -290,8 +328,7 @@ export default function Page() {
             ...(invoiceDueDate && { invoiceDueDate }),
           };
         }
-        
-        // Normal update with paymentStage and invoiceDueDate if provided
+
         return {
           ...i,
           pendingType: status,
@@ -300,6 +337,7 @@ export default function Page() {
         };
       })
     );
+
     setSelectedItem(null);
   }
 
@@ -353,10 +391,10 @@ export default function Page() {
 
   items.forEach((i) => {
     const { days, daysUntil } = getItemDays(i);
+
     if (days >= 1) {
       urgent++;
     } else if (days === 0) {
-      // For paymentFollowup with invoiceDueDate: count as today if due within 7 days
       if (
         i.pendingType === "paymentFollowup" &&
         i.invoiceDueDate &&
@@ -366,26 +404,20 @@ export default function Page() {
           today++;
         }
       } else {
-        // Regular items: count as today
         today++;
       }
     }
   });
-
-  // Count active tasks (pendingType !== "completed")
-  const activeTaskCount = items.filter(
-    (i) => i.pendingType !== "completed"
-  ).length;
 
   let visibleItems = [...items];
 
   if (activePriority) {
     visibleItems = visibleItems.filter((i) => {
       const { days, daysUntil } = getItemDays(i);
+
       if (activePriority === "urgent") {
         return days >= 1;
       } else {
-        // today: days === 0 AND (regular item OR paymentFollowup with due date within 7 days)
         if (days === 0) {
           if (
             i.pendingType === "paymentFollowup" &&
@@ -394,7 +426,7 @@ export default function Page() {
           ) {
             return daysUntil >= 0 && daysUntil <= 7;
           }
-          return true; // Regular items with days === 0
+          return true;
         }
         return false;
       }
@@ -455,14 +487,12 @@ export default function Page() {
   /* ---------------- ADD RFQ CLICK ---------------- */
 
   function handleAddRFQClick() {
-    // If profile not saved, open profile setup first
     if (!profile) {
       setPendingRFQOpen(true);
       setShowProfileSetup(true);
       return;
     }
 
-    // Check plan limits: free plan max 10 active tasks
     if (plan === "free" && activeTaskCount >= 10) {
       setPendingRFQOpen(true);
       setShowUpgradeSheet(true);
@@ -481,27 +511,24 @@ export default function Page() {
             className="absolute inset-0 bg-black/30 backdrop-blur-sm"
             aria-hidden
           />
-          <div
-            className="relative max-w-sm w-full rounded-3xl bg-gradient-to-b from-white to-slate-50/95 px-6 py-8 shadow-2xl"
-            role="dialog"
-            aria-labelledby="onboarding-title"
-          >
-            <h2
-              id="onboarding-title"
-              className="text-xl font-bold text-slate-900 text-center"
-            >
+          <div className="relative max-w-sm w-full rounded-3xl bg-gradient-to-b from-white to-slate-50/95 px-6 py-8 shadow-2xl">
+            <h2 className="text-xl font-bold text-slate-900 text-center">
               Close Deals. Get Paid. On Time.
             </h2>
+
             <p className="text-sm text-slate-600 text-center mt-4 leading-relaxed">
               This app helps traders and suppliers track quotations, follow-ups,
               and payments.
             </p>
+
             <p className="text-sm text-slate-600 text-center mt-2 leading-relaxed">
               So nothing slips on WhatsApp — and no money is forgotten.
             </p>
+
             <p className="text-xs text-slate-400 text-center mt-4 leading-relaxed">
               Built for daily deal follow-ups, not complex CRMs.
             </p>
+
             <div className="mt-8">
               <button
                 onClick={dismissOnboarding}
@@ -663,7 +690,7 @@ export default function Page() {
           }}
         />
 
-        {/* Free plan limit modal (when Save RFQ at 10 tasks) */}
+        {/* Free plan limit modal */}
         {showFreeLimitModal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -675,19 +702,14 @@ export default function Page() {
             />
             <div
               className="relative max-w-sm w-full rounded-3xl bg-gradient-to-b from-white to-slate-50/95 px-6 py-8 shadow-2xl"
-              role="dialog"
-              aria-labelledby="free-limit-title"
               onClick={(e) => e.stopPropagation()}
             >
-              <h2
-                id="free-limit-title"
-                className="text-xl font-bold text-slate-900 text-center"
-              >
+              <h2 className="text-xl font-bold text-slate-900 text-center">
                 You&apos;re at your Free Plan limit
               </h2>
               <p className="text-sm text-slate-600 text-center mt-4 leading-relaxed">
-                Free plan allows only 10 active tasks. Upgrade to track
-                unlimited quotations, invoices, and payments.
+                Free plan allows only 10 active tasks. Upgrade to track unlimited
+                quotations, invoices, and payments.
               </p>
               <div className="mt-6 space-y-3">
                 <button
