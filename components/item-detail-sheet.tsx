@@ -184,15 +184,15 @@ export function ItemDetailSheet({
           )}
         </div>
 
-        {/* Small icon buttons for Call and WhatsApp */}
-        {showComms && (
-          <div className="flex items-center justify-center gap-3 mb-4">
-            {/* Call icon button */}
+        {/* Call, WhatsApp, and Done buttons in one row */}
+        {showComms ? (
+          <div className="flex gap-3 mb-3">
+            {/* Call button */}
             <a
               href={`tel:${item.whatsapp || ""}`}
               className="
-                w-12 h-12
-                rounded-full flex items-center justify-center
+                flex-1 h-14
+                rounded-2xl flex items-center justify-center
                 bg-white/10 text-white
                 backdrop-blur
                 shadow-lg
@@ -214,15 +214,15 @@ export function ItemDetailSheet({
               </svg>
             </a>
 
-            {/* WhatsApp icon button */}
+            {/* WhatsApp button */}
             {hasWhatsApp ? (
               <a
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="
-                  w-12 h-12
-                  rounded-full flex items-center justify-center
+                  flex-1 h-14
+                  rounded-2xl flex items-center justify-center
                   bg-[#25D366] text-white
                   shadow-lg
                   active:scale-95 transition
@@ -240,8 +240,8 @@ export function ItemDetailSheet({
               <button
                 disabled
                 className="
-                  w-12 h-12
-                  rounded-full flex items-center justify-center
+                  flex-1 h-14
+                  rounded-2xl flex items-center justify-center
                   bg-white/5 text-slate-400
                   cursor-not-allowed
                   opacity-50
@@ -256,39 +256,69 @@ export function ItemDetailSheet({
                 />
               </button>
             )}
-          </div>
-        )}
 
-        {/* Main Done button - full width */}
-        <button
-          onClick={() => {
-            if (item.pendingType === "followup") {
-              // Show PO payment terms modal
-              setShowPOPaymentModal(true);
-            } else if (item.pendingType === "invoice") {
-              // Show invoice due date modal
-              setShowInvoiceDueDateModal(true);
-            } else {
-              // Normal flow
-              const nextStage = getNextStage(
-                item.pendingType,
-                item.paymentStage
-              );
-              onStatusChange(item.id, nextStage);
-            }
-          }}
-          className="
-            w-full h-14
-            rounded-2xl flex items-center justify-center gap-2
-            bg-gradient-to-br from-indigo-500 to-purple-500
-            text-white font-semibold text-base
-            shadow-lg shadow-indigo-500/25
-            active:scale-[0.98] transition-transform
-            mb-3
-          "
-        >
-          ✓ Done
-        </button>
+            {/* Done button */}
+            <button
+              onClick={() => {
+                if (item.pendingType === "followup") {
+                  // Show PO payment terms modal
+                  setShowPOPaymentModal(true);
+                } else if (item.pendingType === "invoice") {
+                  // Show invoice due date modal
+                  setShowInvoiceDueDateModal(true);
+                } else {
+                  // Normal flow
+                  const nextStage = getNextStage(
+                    item.pendingType,
+                    item.paymentStage
+                  );
+                  onStatusChange(item.id, nextStage);
+                }
+              }}
+              className="
+                flex-1 h-14
+                rounded-2xl flex items-center justify-center gap-2
+                bg-gradient-to-br from-indigo-500 to-purple-500
+                text-white font-semibold text-base
+                shadow-lg shadow-indigo-500/25
+                active:scale-[0.98] transition-transform
+              "
+            >
+              ✓ Done
+            </button>
+          </div>
+        ) : (
+          /* Done button - full width when Call/WhatsApp not shown */
+          <button
+            onClick={() => {
+              if (item.pendingType === "followup") {
+                // Show PO payment terms modal
+                setShowPOPaymentModal(true);
+              } else if (item.pendingType === "invoice") {
+                // Show invoice due date modal
+                setShowInvoiceDueDateModal(true);
+              } else {
+                // Normal flow
+                const nextStage = getNextStage(
+                  item.pendingType,
+                  item.paymentStage
+                );
+                onStatusChange(item.id, nextStage);
+              }
+            }}
+            className="
+              w-full h-14
+              rounded-2xl flex items-center justify-center gap-2
+              bg-gradient-to-br from-indigo-500 to-purple-500
+              text-white font-semibold text-base
+              shadow-lg shadow-indigo-500/25
+              active:scale-[0.98] transition-transform
+              mb-3
+            "
+          >
+            ✓ Done
+          </button>
+        )}
 
         {/* More Options button */}
         <button
