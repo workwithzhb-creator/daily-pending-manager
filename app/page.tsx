@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { PipelineStages } from "@/components/pipeline-stages";
 import { SummaryCards } from "@/components/summary-cards";
 import { DealCard, PendingItem, PendingType } from "@/components/deal-card";
@@ -14,6 +15,9 @@ import {
 } from "@/components/profile-setup-sheet";
 import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
+import { MigrationModal } from "@/components/migration-modal";
+import { AuthSheet } from "@/components/auth-sheet";
+import { createClient } from "@/lib/supabase/client";
 
 /* ---------------- MOCK DATA ---------------- */
 
@@ -153,6 +157,8 @@ function safeParsePendingItems(raw: string): PendingItem[] | null {
 /* ---------------- PAGE ---------------- */
 
 export default function Page() {
+  const router = useRouter();
+  const supabase = createClient();
   const [items, setItems] = useState<PendingItem[]>([]);
   const [activeStage, setActiveStage] = useState<PendingType | "all">("all");
   const [activePriority, setActivePriority] = useState<PriorityFilter>(null);
@@ -171,6 +177,10 @@ export default function Page() {
   const [showFreeLimitModal, setShowFreeLimitModal] = useState(false);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showMigrationModal, setShowMigrationModal] = useState(false);
+  const [showAuthSheet, setShowAuthSheet] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
 
   const tasksRef = useRef<HTMLDivElement>(null);
   const summaryCardsRef = useRef<HTMLDivElement>(null);
@@ -179,57 +189,248 @@ export default function Page() {
   /* ---------------- LOAD EVERYTHING ON FIRST OPEN ---------------- */
 
   useEffect(() => {
-    // Load profile
-    const savedProfile = localStorage.getItem("dp_user_profile");
-    if (savedProfile) {
-      try {
-        setProfile(JSON.parse(savedProfile));
-      } catch {
-        localStorage.removeItem("dp_user_profile");
+    async function loadData() {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+
+      if (!currentUser) {
+        setShowAuthSheet(true);
+        setLoading(false);
+        return;
       }
-    }
 
-    // Load plan
-    const savedPlan = localStorage.getItem("dp_plan");
-    if (savedPlan === "basic" || savedPlan === "free") {
-      setPlan(savedPlan);
-    } else {
-      localStorage.setItem("dp_plan", "free");
-      setPlan("free");
-    }
+      setUser(currentUser);
+      setShowAuthSheet(false);
 
-    // First-time onboarding: show only once
-    if (localStorage.getItem("dp_onboarding_done") !== "yes") {
-      setShowOnboarding(true);
-    }
+      // Load profile from Supabase
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-    // Load items from "dp_items"
-    const savedItems = localStorage.getItem("dp_items");
-
-    if (savedItems) {
-      const parsed = safeParsePendingItems(savedItems);
-      if (parsed) {
-        setItems(parsed);
+      if (profileData) {
+        // Load from localStorage if available for full profile data
+        const savedProfile = localStorage.getItem("dp_user_profile");
+        if (savedProfile) {
+          try {
+            const parsed = JSON.parse(savedProfile);
+            setProfile(parsed);
+          } catch {
+            // If parsing fails, create minimal profile from Supabase data
+            setProfile({
+              name: profileData.name || "",
+              countryCode: "+966",
+              whatsapp: "",
+            });
+          }
+        } else {
+          // Create minimal profile from Supabase data
+          setProfile({
+            name: profileData.name || "",
+            countryCode: "+966",
+            whatsapp: "",
+          });
+        }
       } else {
-        // If parsing fails, clear corrupted data and start empty
-        localStorage.removeItem("dp_items");
+        // Fallback to localStorage for migration
+        const savedProfile = localStorage.getItem("dp_user_profile");
+        if (savedProfile) {
+          try {
+            const parsed = JSON.parse(savedProfile);
+            setProfile(parsed);
+            // Save to Supabase
+            await supabase.from("profiles").insert({
+              user_id: user.id,
+              name: parsed.name || "",
+            });
+          } catch {
+            localStorage.removeItem("dp_user_profile");
+          }
+        }
+      }
+
+      // Load plan from Supabase
+      const { data: planData } = await supabase
+        .from("user_plans")
+        .select("plan")
+        .eq("user_id", user.id)
+        .single();
+
+      if (planData && (planData.plan === "basic" || planData.plan === "free")) {
+        setPlan(planData.plan);
+      } else {
+        // Fallback to localStorage
+        const savedPlan = localStorage.getItem("dp_plan");
+        if (savedPlan === "basic" || savedPlan === "free") {
+          setPlan(savedPlan);
+          await supabase.from("user_plans").upsert({
+            user_id: user.id,
+            plan: savedPlan,
+          });
+        } else {
+          setPlan("free");
+          await supabase.from("user_plans").upsert({
+            user_id: user.id,
+            plan: "free",
+          });
+        }
+      }
+
+      // Load items from Supabase
+      const { data: itemsData, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error loading tasks:", error);
+      }
+
+      if (itemsData && itemsData.length > 0) {
+        // Convert Supabase data to PendingItem format
+        const convertedItems: PendingItem[] = itemsData.map((item: any) => ({
+          id: item.id,
+          customerName: item.customer_name,
+          pendingType: item.pending_type,
+          createdAt: item.created_at ? new Date(item.created_at) : undefined,
+          timePending: "",
+          label: item.label || "",
+          value: item.value || undefined,
+          invoiceDueDate: item.invoice_due_date || undefined,
+          paymentStage: item.payment_stage || undefined,
+          whatsapp: item.whatsapp || undefined,
+          rfqNumber: item.rfq_number || undefined,
+          completedAt: item.completed_at || undefined,
+        }));
+        setItems(convertedItems);
+        setLoading(false);
+      } else {
+        // Check for localStorage data for migration (only if user just signed in)
+        const savedItems = localStorage.getItem("dp_items");
+        if (savedItems) {
+          const parsed = safeParsePendingItems(savedItems);
+          if (parsed && parsed.length > 0) {
+            // Show migration modal
+            setShowMigrationModal(true);
+            setLoading(false);
+            return;
+          }
+        }
+        // Empty dashboard for new users
+        setItems([]);
+        setLoading(false);
+      }
+
+      // First-time onboarding: show only once
+      const { data: onboardingData } = await supabase
+        .from("user_settings")
+        .select("onboarding_done")
+        .eq("user_id", currentUser.id)
+        .single();
+
+      if (!onboardingData?.onboarding_done) {
+        const localOnboarding = localStorage.getItem("dp_onboarding_done");
+        if (localOnboarding === "yes") {
+          await supabase.from("user_settings").upsert({
+            user_id: currentUser.id,
+            onboarding_done: true,
+          });
+        } else {
+          setShowOnboarding(true);
+        }
       }
     }
-    // If "dp_items" does NOT exist, start with empty array (do NOT load mock)
-  }, []);
 
-  /* ---------------- SAVE ITEMS ALWAYS ---------------- */
+    loadData();
+
+    // Listen for auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: string, session: any) => {
+      if (event === "SIGNED_IN" && session) {
+        setUser(session.user);
+        setShowAuthSheet(false);
+        loadData();
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
+        setShowAuthSheet(true);
+        setItems([]);
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router, supabase]);
+
+  /* ---------------- SAVE ITEMS TO SUPABASE ---------------- */
 
   useEffect(() => {
-    localStorage.setItem("dp_items", JSON.stringify(items));
-  }, [items]);
+    async function saveItems() {
+      if (loading || !user || items.length === 0) return;
 
-  function dismissOnboarding() {
+      // Convert items to Supabase format and upsert
+      const tasksToSave = items.map((item) => ({
+        id: item.id,
+        user_id: user.id,
+        customer_name: item.customerName,
+        pending_type: item.pendingType,
+        created_at: item.createdAt?.toISOString() || new Date().toISOString(),
+        label: item.label || "",
+        value: item.value || null,
+        invoice_due_date: item.invoiceDueDate || null,
+        payment_stage: item.paymentStage || null,
+        whatsapp: item.whatsapp || null,
+        rfq_number: item.rfqNumber || null,
+        completed_at: item.completedAt || null,
+      }));
+
+      // Delete all existing tasks and insert new ones (simple approach)
+      await supabase.from("tasks").delete().eq("user_id", user.id);
+
+      if (tasksToSave.length > 0) {
+        await supabase.from("tasks").insert(tasksToSave);
+      }
+    }
+
+    if (!loading && user) {
+      saveItems();
+    }
+  }, [items, loading, user, supabase]);
+
+  async function dismissOnboarding() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      await supabase.from("user_settings").upsert({
+        user_id: user.id,
+        onboarding_done: true,
+      });
+    }
+
     localStorage.setItem("dp_onboarding_done", "yes");
     setShowOnboarding(false);
   }
 
-  function handleSaveProfile(data: UserProfile) {
+  async function handleSaveProfile(data: UserProfile) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      await supabase.from("profiles").upsert({
+        user_id: user.id,
+        name: data.name || "",
+      });
+    }
+
+    // Also save to localStorage for backward compatibility
     localStorage.setItem("dp_user_profile", JSON.stringify(data));
     setProfile(data);
     setShowProfileSetup(false);
@@ -238,6 +439,82 @@ export default function Page() {
       setPendingRFQOpen(false);
       setShowAddRFQ(true);
     }
+  }
+
+  async function handleMigrationImport() {
+    const savedItems = localStorage.getItem("dp_items");
+    if (!savedItems) {
+      setShowMigrationModal(false);
+      return;
+    }
+
+    const parsed = safeParsePendingItems(savedItems);
+    if (!parsed || parsed.length === 0) {
+      setShowMigrationModal(false);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setShowMigrationModal(false);
+      return;
+    }
+
+    // Convert and save to Supabase
+    const tasksToSave = parsed.map((item) => ({
+      id: item.id,
+      user_id: user.id,
+      customer_name: item.customerName,
+      pending_type: item.pendingType,
+      created_at: item.createdAt?.toISOString() || new Date().toISOString(),
+      label: item.label || "",
+      value: item.value || null,
+      invoice_due_date: item.invoiceDueDate || null,
+      payment_stage: item.paymentStage || null,
+      whatsapp: item.whatsapp || null,
+      rfq_number: item.rfqNumber || null,
+      completed_at: item.completedAt || null,
+    }));
+
+    await supabase.from("tasks").insert(tasksToSave);
+
+    // Clear localStorage
+    localStorage.removeItem("dp_items");
+
+    // Reload items
+    const { data: itemsData } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (itemsData) {
+      const convertedItems: PendingItem[] = itemsData.map((item: any) => ({
+        id: item.id,
+        customerName: item.customer_name,
+        pendingType: item.pending_type,
+        createdAt: item.created_at ? new Date(item.created_at) : undefined,
+        timePending: "",
+        label: item.label || "",
+        value: item.value || undefined,
+        invoiceDueDate: item.invoice_due_date || undefined,
+        paymentStage: item.payment_stage || undefined,
+        whatsapp: item.whatsapp || undefined,
+        rfqNumber: item.rfq_number || undefined,
+        completedAt: item.completed_at || undefined,
+      }));
+      setItems(convertedItems);
+    }
+
+    setShowMigrationModal(false);
+  }
+
+  function handleMigrationSkip() {
+    localStorage.removeItem("dp_items");
+    setShowMigrationModal(false);
   }
 
   function handleOpenProfile() {
@@ -264,7 +541,18 @@ export default function Page() {
 
   /* ---------------- PLAN MANAGEMENT ---------------- */
 
-  function handleUpgrade() {
+  async function handleUpgrade() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      await supabase.from("user_plans").upsert({
+        user_id: user.id,
+        plan: "basic",
+      });
+    }
+
     localStorage.setItem("dp_plan", "basic");
     setPlan("basic");
     setShowUpgradeSheet(false);
@@ -275,47 +563,80 @@ export default function Page() {
     }
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setItems([]);
+    setProfile(null);
+    setShowAuthSheet(true);
+  }
+
+  function handleAuthSuccess() {
+    // Auth success will trigger auth state change listener
+    // which will reload data
+  }
+
   /* ---------------- RFQ SAVE ---------------- */
 
   const activeTaskCount = items.filter((i) => i.pendingType !== "completed")
     .length;
 
-  function handleSaveRFQ(data: RFQPayload) {
+  async function handleSaveRFQ(data: RFQPayload) {
+    if (!user) {
+      setShowAuthSheet(true);
+      return;
+    }
+
     if (plan === "free" && activeTaskCount >= 10) {
       setShowAddRFQ(false);
       setShowFreeLimitModal(true);
       return;
     }
 
-    setItems((prev) => [
-      {
-        id: crypto.randomUUID(),
-        customerName: data.customerName,
-        pendingType: "quotation",
-        createdAt: new Date(),
-        timePending: "",
-        label: data.note || data.rfqNumber,
-        whatsapp: data.whatsapp,
-        rfqNumber: data.rfqNumber,
-      },
-      ...prev,
-    ]);
+    const newItem: PendingItem = {
+      id: crypto.randomUUID(),
+      customerName: data.customerName,
+      pendingType: "quotation",
+      createdAt: new Date(),
+      timePending: "",
+      label: data.note || data.rfqNumber,
+      whatsapp: data.whatsapp,
+      rfqNumber: data.rfqNumber,
+    };
+
+    // Update local state immediately
+    setItems((prev) => [newItem, ...prev]);
+
+    // Save to Supabase
+    await supabase.from("tasks").insert({
+      id: newItem.id,
+      user_id: user.id,
+      customer_name: newItem.customerName,
+      pending_type: newItem.pendingType,
+      created_at: newItem.createdAt?.toISOString() || new Date().toISOString(),
+      label: newItem.label || "",
+      whatsapp: newItem.whatsapp || null,
+      rfq_number: newItem.rfqNumber || null,
+    });
 
     setShowAddRFQ(false);
   }
 
-  function updateItemStatus(
+  async function updateItemStatus(
     id: string,
     status: PendingType,
     paymentStage?: "advance" | "balance",
     invoiceDueDate?: string
   ) {
+    if (!user) return;
+
+    const isCompleted = status === "completed";
+    const completedAtValue = isCompleted ? new Date().toISOString() : undefined;
+
+    // Update local state immediately
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-
-        const isCompleted = status === "completed";
-        const completedAtValue = isCompleted ? new Date().toISOString() : undefined;
 
         if (
           i.pendingType === "invoice" &&
@@ -341,30 +662,57 @@ export default function Page() {
       })
     );
 
+    // Update in Supabase
+    const updatedItem = items.find((i) => i.id === id);
+    if (updatedItem) {
+      await supabase
+        .from("tasks")
+        .update({
+          pending_type: status,
+          payment_stage: paymentStage || null,
+          invoice_due_date: invoiceDueDate || null,
+          completed_at: completedAtValue || null,
+        })
+        .eq("id", id)
+        .eq("user_id", user.id);
+    }
+
     setSelectedItem(null);
   }
 
-  function handleDeleteItem(id: string) {
+  async function handleDeleteItem(id: string) {
+    if (!user) return;
+
+    // Update local state immediately
     setItems((prev) => prev.filter((i) => i.id !== id));
     setSelectedItem(null);
+
+    // Delete from Supabase
+    await supabase.from("tasks").delete().eq("id", id).eq("user_id", user.id);
   }
 
-  function handleMoveBack(id: string) {
+  async function handleMoveBack(id: string) {
+    if (!user) return;
+
+    const moveBackMap: Record<PendingType, PendingType | null> = {
+      quotation: null, // Cannot go back
+      followup: "quotation",
+      delivery: "followup",
+      invoice: "delivery",
+      paymentFollowup: "invoice",
+      completed: "paymentFollowup",
+    };
+
+    const currentItem = items.find((i) => i.id === id);
+    if (!currentItem) return;
+
+    const previousStage = moveBackMap[currentItem.pendingType];
+    if (!previousStage) return;
+
+    // Update local state immediately
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-
-        const moveBackMap: Record<PendingType, PendingType | null> = {
-          quotation: null, // Cannot go back
-          followup: "quotation",
-          delivery: "followup",
-          invoice: "delivery",
-          paymentFollowup: "invoice",
-          completed: "paymentFollowup",
-        };
-
-        const previousStage = moveBackMap[i.pendingType];
-        if (!previousStage) return i;
 
         return {
           ...i,
@@ -374,6 +722,17 @@ export default function Page() {
         };
       })
     );
+
+    // Update in Supabase
+    await supabase
+      .from("tasks")
+      .update({
+        pending_type: previousStage,
+        completed_at: currentItem.pendingType === "completed" ? null : currentItem.completedAt || null,
+      })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
     setSelectedItem(null);
   }
 
@@ -581,6 +940,14 @@ export default function Page() {
     setShowAddRFQ(true);
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50/30 flex items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/40 to-purple-50/30">
       {/* First-time onboarding modal */}
@@ -631,7 +998,13 @@ export default function Page() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">
-              {profile?.name ? `${getGreeting()}, ${profile.name}` : getGreeting()}
+              {user
+                ? profile?.name
+                  ? `${getGreeting()}, ${profile.name}`
+                  : user.email
+                  ? `${getGreeting()}, ${user.email.split("@")[0]}`
+                  : getGreeting()
+                : "Welcome"}
             </h1>
             <span
               className={`
@@ -698,16 +1071,24 @@ export default function Page() {
           </h2>
 
           <div className="space-y-3">
-            {visibleItems.map((item) => (
-              <DealCard
-                key={item.id}
-                item={{
-                  ...item,
-                  timePending: getTimePending(item.createdAt),
-                }}
-                onClick={() => setSelectedItem(item)}
-              />
-            ))}
+            {visibleItems.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-slate-500 text-sm">
+                  {user ? "No tasks yet" : "Sign in to manage your tasks"}
+                </p>
+              </div>
+            ) : (
+              visibleItems.map((item) => (
+                <DealCard
+                  key={item.id}
+                  item={{
+                    ...item,
+                    timePending: getTimePending(item.createdAt),
+                  }}
+                  onClick={() => setSelectedItem(item)}
+                />
+              ))
+            )}
           </div>
         </div>
       </main>
@@ -820,7 +1201,18 @@ export default function Page() {
           plan={plan}
           onUpgrade={handleUpgradeFromAccount}
           onEditProfile={handleEditProfileFromAccount}
+          onLogout={handleLogout}
         />
+
+        {/* Migration Modal */}
+        <MigrationModal
+          open={showMigrationModal}
+          onImport={handleMigrationImport}
+          onSkip={handleMigrationSkip}
+        />
+
+        {/* Auth Sheet */}
+        <AuthSheet open={showAuthSheet} onSuccess={handleAuthSuccess} />
       </div>
     </div>
   );

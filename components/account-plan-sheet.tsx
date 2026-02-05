@@ -9,6 +9,7 @@ export function AccountPlanSheet({
   plan,
   onUpgrade,
   onEditProfile,
+  onLogout,
 }: {
   open: boolean;
   onClose: () => void;
@@ -16,6 +17,7 @@ export function AccountPlanSheet({
   plan: "free" | "basic";
   onUpgrade: () => void;
   onEditProfile: () => void;
+  onLogout: () => void;
 }) {
   if (!open) return null;
 
@@ -139,9 +141,24 @@ export function AccountPlanSheet({
               border border-slate-200
               hover:bg-slate-50
               transition-colors
+              mb-3
             "
           >
             Edit Profile
+          </button>
+
+          {/* Logout Button */}
+          <button
+            onClick={onLogout}
+            className="
+              w-full h-11 rounded-2xl text-sm font-medium
+              text-red-600
+              border border-red-200
+              hover:bg-red-50
+              transition-colors
+            "
+          >
+            Sign Out
           </button>
         </div>
       </div>
