@@ -48,6 +48,18 @@ function getNextStage(
   return flow[type];
 }
 
+function getPreviousStage(type: PendingType): PendingType | null {
+  const moveBackMap: Record<PendingType, PendingType | null> = {
+    quotation: null, // Cannot go back
+    followup: "quotation",
+    delivery: "followup",
+    invoice: "delivery",
+    paymentFollowup: "invoice",
+    completed: "paymentFollowup",
+  };
+  return moveBackMap[type];
+}
+
 function getDoneHint(type: PendingType) {
   const map: Partial<Record<PendingType, string>> = {
     quotation: "Mark as done once quotation is sent",
@@ -81,6 +93,8 @@ export function ItemDetailSheet({
   item,
   onClose,
   onStatusChange,
+  onDelete,
+  onMoveBack,
   plan = "free",
 }: {
   item: PendingItem | null;
@@ -91,6 +105,8 @@ export function ItemDetailSheet({
     paymentStage?: "advance" | "balance",
     invoiceDueDate?: string
   ) => void;
+  onDelete: (id: string) => void;
+  onMoveBack: (id: string) => void;
   plan?: "free" | "basic";
 }) {
   const [showPOPaymentModal, setShowPOPaymentModal] = useState(false);
@@ -257,6 +273,43 @@ export function ItemDetailSheet({
             "
           >
             ✓ Done
+          </button>
+        </div>
+
+        {/* Delete and Undo buttons */}
+        <div className="mt-4 flex gap-3">
+          {/* Undo / Move Back */}
+          {getPreviousStage(item.pendingType) !== null && (
+            <button
+              onClick={() => {
+                onMoveBack(item.id);
+              }}
+              className="
+                flex-1 h-12
+                rounded-2xl flex items-center justify-center gap-2
+                bg-white/10 text-white
+                backdrop-blur font-medium
+                active:scale-95 transition
+              "
+            >
+              ↶ Move Back
+            </button>
+          )}
+
+          {/* Delete */}
+          <button
+            onClick={() => {
+              onDelete(item.id);
+            }}
+            className="
+              flex-1 h-12
+              rounded-2xl flex items-center justify-center gap-2
+              bg-red-500/90 text-white
+              font-medium shadow-lg
+              active:scale-95 transition
+            "
+          >
+            🗑 Delete
           </button>
         </div>
 

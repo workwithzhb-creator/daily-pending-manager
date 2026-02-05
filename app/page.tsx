@@ -314,6 +314,9 @@ export default function Page() {
       prev.map((i) => {
         if (i.id !== id) return i;
 
+        const isCompleted = status === "completed";
+        const completedAtValue = isCompleted ? new Date().toISOString() : undefined;
+
         if (
           i.pendingType === "invoice" &&
           status === "paymentFollowup" &&
@@ -324,6 +327,7 @@ export default function Page() {
             pendingType: status,
             paymentStage: "balance",
             ...(invoiceDueDate && { invoiceDueDate }),
+            ...(completedAtValue && { completedAt: completedAtValue }),
           };
         }
 
@@ -332,10 +336,46 @@ export default function Page() {
           pendingType: status,
           ...(paymentStage !== undefined && { paymentStage }),
           ...(invoiceDueDate && { invoiceDueDate }),
+          ...(completedAtValue && { completedAt: completedAtValue }),
         };
       })
     );
 
+    setSelectedItem(null);
+  }
+
+  function handleDeleteItem(id: string) {
+    if (confirm("Delete this task?")) {
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      setSelectedItem(null);
+    }
+  }
+
+  function handleMoveBack(id: string) {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+
+        const moveBackMap: Record<PendingType, PendingType | null> = {
+          quotation: null, // Cannot go back
+          followup: "quotation",
+          delivery: "followup",
+          invoice: "delivery",
+          paymentFollowup: "invoice",
+          completed: "paymentFollowup",
+        };
+
+        const previousStage = moveBackMap[i.pendingType];
+        if (!previousStage) return i;
+
+        return {
+          ...i,
+          pendingType: previousStage,
+          // Clear completedAt if moving back from completed
+          ...(i.pendingType === "completed" && { completedAt: undefined }),
+        };
+      })
+    );
     setSelectedItem(null);
   }
 
@@ -395,6 +435,17 @@ export default function Page() {
     );
   }
 
+  function isCompletedToday(completedAt?: string): boolean {
+    if (!completedAt) return false;
+    const now = new Date();
+    const completed = new Date(completedAt);
+    return (
+      now.getFullYear() === completed.getFullYear() &&
+      now.getMonth() === completed.getMonth() &&
+      now.getDate() === completed.getDate()
+    );
+  }
+
   let urgent = 0;
   let today = 0;
   let todayTotalCount = 0;
@@ -433,8 +484,8 @@ export default function Page() {
       todayTotalCount++;
     }
 
-    // Count completed tasks created today
-    if (i.pendingType === "completed" && isCreatedToday(i.createdAt)) {
+    // Count completed tasks completed today (using completedAt)
+    if (i.pendingType === "completed" && isCompletedToday(i.completedAt)) {
       todayCompletedCount++;
     }
   });
@@ -675,6 +726,8 @@ export default function Page() {
           }
           onClose={() => setSelectedItem(null)}
           onStatusChange={updateItemStatus}
+          onDelete={handleDeleteItem}
+          onMoveBack={handleMoveBack}
           plan={plan}
         />
       </div>

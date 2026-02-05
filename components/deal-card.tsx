@@ -27,6 +27,7 @@ export type PendingItem = {
   // optional future use
   whatsapp?: string;
   rfqNumber?: string;
+  completedAt?: string;
 };
 
 const bgMap: Record<PendingType, string> = {
