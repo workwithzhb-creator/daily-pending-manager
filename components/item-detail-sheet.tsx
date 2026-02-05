@@ -111,6 +111,8 @@ export function ItemDetailSheet({
 }) {
   const [showPOPaymentModal, setShowPOPaymentModal] = useState(false);
   const [showInvoiceDueDateModal, setShowInvoiceDueDateModal] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!item) return null;
 
@@ -182,149 +184,179 @@ export function ItemDetailSheet({
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap gap-3">
-          {showComms && (
-            <>
-              {/* Call */}
+        {/* Small icon buttons for Call and WhatsApp */}
+        {showComms && (
+          <div className="flex items-center justify-center gap-3 mb-4">
+            {/* Call icon button */}
+            <a
+              href={`tel:${item.whatsapp || ""}`}
+              className="
+                w-12 h-12
+                rounded-full flex items-center justify-center
+                bg-white/10 text-white
+                backdrop-blur
+                shadow-lg
+                active:scale-95 transition
+                hover:bg-white/15
+              "
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+              </svg>
+            </a>
+
+            {/* WhatsApp icon button */}
+            {hasWhatsApp ? (
               <a
-                href={`tel:${item.whatsapp || ""}`}
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="
-                  flex-1 min-w-[120px] h-12
-                  rounded-2xl flex items-center justify-center gap-2
-                  bg-white/10 text-white
-                  backdrop-blur font-medium
+                  w-12 h-12
+                  rounded-full flex items-center justify-center
+                  bg-[#25D366] text-white
+                  shadow-lg
+                  active:scale-95 transition
+                  hover:bg-[#20ba5a]
+                "
+              >
+                <Image
+                  src="/icons/whatsapp.png"
+                  alt="WhatsApp"
+                  width={20}
+                  height={20}
+                />
+              </a>
+            ) : (
+              <button
+                disabled
+                className="
+                  w-12 h-12
+                  rounded-full flex items-center justify-center
+                  bg-white/5 text-slate-400
+                  cursor-not-allowed
+                  opacity-50
+                "
+              >
+                <Image
+                  src="/icons/whatsapp.png"
+                  alt="WhatsApp"
+                  width={20}
+                  height={20}
+                  className="opacity-50"
+                />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Main Done button - full width */}
+        <button
+          onClick={() => {
+            if (item.pendingType === "followup") {
+              // Show PO payment terms modal
+              setShowPOPaymentModal(true);
+            } else if (item.pendingType === "invoice") {
+              // Show invoice due date modal
+              setShowInvoiceDueDateModal(true);
+            } else {
+              // Normal flow
+              const nextStage = getNextStage(
+                item.pendingType,
+                item.paymentStage
+              );
+              onStatusChange(item.id, nextStage);
+            }
+          }}
+          className="
+            w-full h-14
+            rounded-2xl flex items-center justify-center gap-2
+            bg-gradient-to-br from-indigo-500 to-purple-500
+            text-white font-semibold text-base
+            shadow-lg shadow-indigo-500/25
+            active:scale-[0.98] transition-transform
+            mb-3
+          "
+        >
+          ✓ Done
+        </button>
+
+        {/* More Options button */}
+        <button
+          onClick={() => setShowMoreOptions(!showMoreOptions)}
+          className="
+            w-full h-11
+            rounded-xl flex items-center justify-center gap-2
+            bg-white/5 text-slate-300
+            font-medium text-sm
+            active:scale-95 transition
+            mb-3
+          "
+        >
+          ⋯ More Options
+        </button>
+
+        {/* More Options menu */}
+        {showMoreOptions && (
+          <div className="mb-3 space-y-2">
+            {/* Move Back */}
+            {getPreviousStage(item.pendingType) !== null && (
+              <button
+                onClick={() => {
+                  onMoveBack(item.id);
+                  setShowMoreOptions(false);
+                }}
+                className="
+                  w-full h-11
+                  rounded-xl flex items-center justify-center gap-2
+                  bg-white/5 text-slate-300
+                  font-medium text-sm
                   active:scale-95 transition
                 "
               >
-                📞 Call
-              </a>
+                ↶ Move Back
+              </button>
+            )}
 
-              {/* WhatsApp - always show for followup and paymentFollowup */}
-              {hasWhatsApp ? (
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="
-                    flex-1 min-w-[140px] h-12
-                    rounded-2xl flex items-center justify-center gap-2
-                    bg-[#25D366] text-white
-                    font-medium shadow-lg
-                    active:scale-95 transition
-                  "
-                >
-                  <Image
-                    src="/icons/whatsapp.png"
-                    alt="WhatsApp"
-                    width={20}
-                    height={20}
-                  />
-                  WhatsApp
-                </a>
-              ) : (
-                <button
-                  disabled
-                  className="
-                    flex-1 min-w-[140px] h-12
-                    rounded-2xl flex items-center justify-center gap-2
-                    bg-white/5 text-slate-400
-                    font-medium
-                    cursor-not-allowed
-                  "
-                >
-                  <Image
-                    src="/icons/whatsapp.png"
-                    alt="WhatsApp"
-                    width={20}
-                    height={20}
-                    className="opacity-50"
-                  />
-                  WhatsApp
-                </button>
-              )}
-            </>
-          )}
-
-          {/* Done */}
-          <button
-            onClick={() => {
-              if (item.pendingType === "followup") {
-                // Show PO payment terms modal
-                setShowPOPaymentModal(true);
-              } else if (item.pendingType === "invoice") {
-                // Show invoice due date modal
-                setShowInvoiceDueDateModal(true);
-              } else {
-                // Normal flow
-                const nextStage = getNextStage(
-                  item.pendingType,
-                  item.paymentStage
-                );
-                onStatusChange(item.id, nextStage);
-              }
-            }}
-            className="
-              flex-1 min-w-[120px] h-12
-              rounded-2xl flex items-center justify-center gap-2
-              bg-gradient-to-br from-violet-500 to-purple-600
-              text-white font-medium shadow-lg
-              active:scale-95 transition
-            "
-          >
-            ✓ Done
-          </button>
-        </div>
-
-        {/* Delete and Undo buttons */}
-        <div className="mt-4 flex gap-3">
-          {/* Undo / Move Back */}
-          {getPreviousStage(item.pendingType) !== null && (
+            {/* Delete */}
             <button
               onClick={() => {
-                onMoveBack(item.id);
+                setShowMoreOptions(false);
+                setShowDeleteConfirm(true);
               }}
               className="
-                flex-1 h-12
-                rounded-2xl flex items-center justify-center gap-2
-                bg-white/10 text-white
-                backdrop-blur font-medium
+                w-full h-11
+                rounded-xl flex items-center justify-center gap-2
+                bg-transparent text-red-400
+                font-medium text-sm
                 active:scale-95 transition
+                hover:bg-red-500/10
               "
             >
-              ↶ Move Back
+              🗑 Delete
             </button>
-          )}
-
-          {/* Delete */}
-          <button
-            onClick={() => {
-              onDelete(item.id);
-            }}
-            className="
-              flex-1 h-12
-              rounded-2xl flex items-center justify-center gap-2
-              bg-red-500/90 text-white
-              font-medium shadow-lg
-              active:scale-95 transition
-            "
-          >
-            🗑 Delete
-          </button>
-        </div>
+          </div>
+        )}
 
         {/* WhatsApp warning */}
         {showComms && !hasWhatsApp && (
-          <p className="mt-4 text-xs text-slate-400 flex items-start gap-2">
-            <span className="text-yellow-400">⚠</span>
+          <p className="mt-3 text-[10px] text-slate-500 text-center">
             WhatsApp number not saved
           </p>
         )}
 
         {/* Hint */}
         {doneHint && (
-          <p className="mt-4 text-xs text-slate-400 flex items-start gap-2">
-            <span className="text-yellow-400">★</span>
+          <p className="mt-3 text-[10px] text-slate-500 text-center">
             {doneHint}
           </p>
         )}
@@ -358,6 +390,57 @@ export function ItemDetailSheet({
         }}
         onClose={() => setShowInvoiceDueDateModal(false)}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDeleteConfirm(false)}
+            aria-hidden
+          />
+          <div
+            className="relative max-w-sm w-full rounded-3xl bg-gradient-to-b from-slate-900 to-black px-6 py-6 shadow-2xl border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-white text-center mb-2">
+              Delete Task?
+            </h3>
+            <p className="text-sm text-slate-400 text-center mb-6">
+              Are you sure you want to delete this task?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="
+                  flex-1 h-12
+                  rounded-xl flex items-center justify-center
+                  bg-white/10 text-white
+                  font-medium text-sm
+                  active:scale-95 transition
+                "
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  onDelete(item.id);
+                  setShowDeleteConfirm(false);
+                }}
+                className="
+                  flex-1 h-12
+                  rounded-xl flex items-center justify-center
+                  bg-red-500/90 text-white
+                  font-medium text-sm
+                  active:scale-95 transition
+                "
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

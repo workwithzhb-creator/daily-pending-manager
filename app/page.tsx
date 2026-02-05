@@ -345,10 +345,8 @@ export default function Page() {
   }
 
   function handleDeleteItem(id: string) {
-    if (confirm("Delete this task?")) {
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      setSelectedItem(null);
-    }
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setSelectedItem(null);
   }
 
   function handleMoveBack(id: string) {
