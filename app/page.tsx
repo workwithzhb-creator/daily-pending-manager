@@ -449,7 +449,7 @@ export default function Page() {
 
     // Preserve existing stage logic; just persist the correct fields.
     let paymentStageToWrite: "advance" | "balance" | null =
-      paymentStage !== undefined ? paymentStage : (currentItem.paymentStage ?? null);
+      paymentStage !== undefined ? paymentStage : currentItem.paymentStage ?? null;
 
     if (
       currentItem.pendingType === "invoice" &&
@@ -459,16 +459,22 @@ export default function Page() {
       paymentStageToWrite = "balance";
     }
 
-    await supabase
+    const updatePayload: Record<string, any> = {
+      pending_type: status,
+      payment_stage: paymentStageToWrite,
+      ...(invoiceDueDate !== undefined && { invoice_due_date: invoiceDueDate || null }),
+      completed_at: completedAtValue || null,
+    };
+
+    const { error } = await supabase
       .from("tasks")
-      .update({
-        pending_type: status,
-        payment_stage: paymentStageToWrite,
-        invoice_due_date: invoiceDueDate || null,
-        completed_at: completedAtValue || null,
-      })
+      .update(updatePayload)
       .eq("id", id)
       .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Error updating task:", error);
+    }
 
     await refetchTasks(user.id);
 
