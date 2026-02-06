@@ -35,11 +35,11 @@ function formatDate(d: Date) {
   });
 }
 
-function getDaysPending(createdAt?: Date): number {
-  if (!createdAt) return 0;
+function getDaysPending(stageUpdatedAt?: Date): number {
+  if (!stageUpdatedAt) return 0;
   const now = new Date();
   return Math.floor(
-    (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    (now.getTime() - stageUpdatedAt.getTime()) / (1000 * 60 * 60 * 24)
   );
 }
 
@@ -64,14 +64,14 @@ function getItemDays(item: PendingItem): { days: number; daysUntil?: number } {
     }
   }
 
-  const days = getDaysPending(item.createdAt);
+  const days = getDaysPending(item.stageUpdatedAt);
   return { days };
 }
 
-function getTimePending(createdAt?: Date): string {
-  if (!createdAt) return "";
+function getTimePending(stageUpdatedAt?: Date): string {
+  if (!stageUpdatedAt) return "";
   const diffHours = Math.floor(
-    (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
+    (Date.now() - stageUpdatedAt.getTime()) / (1000 * 60 * 60)
   );
   if (diffHours < 24) return `${diffHours}h`;
   const diffDays = Math.floor(diffHours / 24);
@@ -148,8 +148,9 @@ export default function Page() {
       id: item.id,
       customerName: item.customer_name,
       pendingType: item.pending_type,
-      // IMPORTANT: created_at comes from Supabase; convert to Date for getTimePending()
       createdAt: item.created_at ? new Date(item.created_at) : undefined,
+      // IMPORTANT: stage_updated_at comes from Supabase; convert to Date for getTimePending()
+      stageUpdatedAt: item.stage_updated_at ? new Date(item.stage_updated_at) : undefined,
       timePending: "",
       label: item.label || "",
       value: item.value || undefined,
@@ -319,12 +320,14 @@ export default function Page() {
     }
 
     // Convert and save to Supabase
+    const now = new Date().toISOString();
     const tasksToSave = parsed.map((item) => ({
       id: item.id,
       user_id: user.id,
       customer_name: item.customerName,
       pending_type: item.pendingType,
-      created_at: item.createdAt?.toISOString() || new Date().toISOString(),
+      created_at: item.createdAt?.toISOString() || now,
+      stage_updated_at: now, // Set stage_updated_at for migrated items
       label: item.label || "",
       value: item.value || null,
       invoice_due_date: item.invoiceDueDate || null,
@@ -419,11 +422,13 @@ export default function Page() {
 
     // Insert into Supabase (source of truth), then refetch so created_at is consistent
     const newId = crypto.randomUUID();
+    const now = new Date().toISOString();
     await supabase.from("tasks").insert({
       id: newId,
       user_id: user.id,
       customer_name: data.customerName,
       pending_type: "quotation",
+      stage_updated_at: now,
       label: data.note || data.rfqNumber || "",
       whatsapp: data.whatsapp || null,
       rfq_number: data.rfqNumber || null,
@@ -461,6 +466,7 @@ export default function Page() {
 
     const updatePayload: Record<string, any> = {
       pending_type: status,
+      stage_updated_at: new Date().toISOString(), // Update stage timestamp when moving to next stage
       payment_stage: paymentStageToWrite,
       ...(invoiceDueDate !== undefined && { invoice_due_date: invoiceDueDate || null }),
       completed_at: completedAtValue || null,
@@ -529,6 +535,7 @@ export default function Page() {
       .from("tasks")
       .update({
         pending_type: previousStage,
+        stage_updated_at: new Date().toISOString(), // Update stage timestamp when moving back
         completed_at: currentItem.pendingType === "completed" ? null : currentItem.completedAt || null,
       })
       .eq("id", id)
@@ -884,7 +891,7 @@ export default function Page() {
                   key={item.id}
                   item={{
                     ...item,
-                    timePending: getTimePending(item.createdAt),
+                    timePending: getTimePending(item.stageUpdatedAt),
                   }}
                   onClick={() => setSelectedItem(item)}
                 />
@@ -900,7 +907,7 @@ export default function Page() {
             selectedItem
               ? {
                   ...selectedItem,
-                  timePending: getTimePending(selectedItem.createdAt),
+                  timePending: getTimePending(selectedItem.stageUpdatedAt),
                 }
               : null
           }

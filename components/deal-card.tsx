@@ -15,6 +15,7 @@ export type PendingItem = {
 
   // ✅ FIX FOR VERCEL BUILD ERROR
   createdAt?: Date;
+  stageUpdatedAt?: Date; // When task moved to current stage
 
   timePending: string;
   label: string;
