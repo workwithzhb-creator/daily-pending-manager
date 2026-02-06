@@ -617,6 +617,15 @@ export default function Page() {
   let todayCompletedCount = 0;
 
   items.forEach((i) => {
+    // Exclude completed tasks from urgent/today counts
+    if (i.pendingType === "completed") {
+      // Count completed tasks completed today (using completedAt)
+      if (isCompletedToday(i.completedAt)) {
+        todayCompletedCount++;
+      }
+      return;
+    }
+
     const { days, daysUntil } = getItemDays(i);
 
     if (days >= 1) {
@@ -645,20 +654,21 @@ export default function Page() {
         daysUntil <= 7);
 
     // Count today tasks (excluding completed)
-    if (isTodayTask && i.pendingType !== "completed") {
+    if (isTodayTask) {
       todayTotalCount++;
-    }
-
-    // Count completed tasks completed today (using completedAt)
-    if (i.pendingType === "completed" && isCompletedToday(i.completedAt)) {
-      todayCompletedCount++;
     }
   });
 
   let visibleItems = [...items];
 
   if (activePriority) {
+    // Exclude completed tasks when filtering by urgent/today
     visibleItems = visibleItems.filter((i) => {
+      // Completed tasks should not appear in urgent/today filters
+      if (i.pendingType === "completed") {
+        return false;
+      }
+
       const { days, daysUntil } = getItemDays(i);
 
       if (activePriority === "urgent") {
