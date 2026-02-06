@@ -16,7 +16,9 @@ import {
 import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
 import { MigrationModal } from "@/components/migration-modal";
+import EnableNotificationsButton from "@/components/EnableNotificationsButton";
 import { createClient } from "@/lib/supabase/client";
+import OneSignal from "react-onesignal";
 
 /* ---------------- HELPERS ---------------- */
 
@@ -126,6 +128,7 @@ export default function Page() {
   const [showMigrationModal, setShowMigrationModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [showNotificationBanner, setShowNotificationBanner] = useState(true);
 
   const tasksRef = useRef<HTMLDivElement>(null);
   const summaryCardsRef = useRef<HTMLDivElement>(null);
@@ -275,6 +278,38 @@ export default function Page() {
       subscription.unsubscribe();
     };
   }, [router, supabase]);
+
+  // Check notification permission and hide banner when already enabled
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkNotificationPermission = () => {
+      try {
+        const optedIn = OneSignal?.User?.PushSubscription?.optedIn;
+        const permission = OneSignal?.Notifications?.permission;
+        if (optedIn === true || permission === true) {
+          setShowNotificationBanner(false);
+        }
+      } catch {
+        // OneSignal may not be ready yet
+      }
+    };
+
+    // Check after a short delay so OneSignal init can complete
+    const t = setTimeout(checkNotificationPermission, 500);
+    const interval = setInterval(checkNotificationPermission, 2000);
+
+    const handleChange = () => checkNotificationPermission();
+    OneSignal?.User?.PushSubscription?.addEventListener?.("change", handleChange);
+    OneSignal?.Notifications?.addEventListener?.("permissionChange", handleChange);
+
+    return () => {
+      clearTimeout(t);
+      clearInterval(interval);
+      OneSignal?.User?.PushSubscription?.removeEventListener?.("change", handleChange);
+      OneSignal?.Notifications?.removeEventListener?.("permissionChange", handleChange);
+    };
+  }, []);
 
   function dismissOnboarding() {
     if (typeof window !== "undefined") {
@@ -868,6 +903,23 @@ export default function Page() {
       </header>
 
       <main className="px-6 pb-32 max-w-lg mx-auto space-y-8">
+        {showNotificationBanner && (
+          <div
+            className="
+              rounded-2xl border border-slate-200/80 bg-white/90 backdrop-blur
+              px-4 py-3 flex items-center justify-between gap-4
+              shadow-sm
+            "
+          >
+            <p className="text-sm text-slate-600 flex-1 min-w-0">
+              Enable Notifications to get quotation, invoice & payment reminders.
+            </p>
+            <EnableNotificationsButton
+              className="bg-gradient-to-br from-indigo-500 to-purple-500 text-white px-4 py-2 rounded-xl shadow shrink-0 text-sm font-medium"
+            />
+          </div>
+        )}
+
         <div ref={summaryCardsRef} className="flex items-center gap-4">
           <ProgressRing completed={completedCount} total={totalCount} />
           <SummaryCards
