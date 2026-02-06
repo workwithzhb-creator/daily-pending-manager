@@ -400,10 +400,33 @@ export default function Page() {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    setUser(null);
-    setItems([]);
-    setProfile(null);
+    try {
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        alert(`Failed to sign out: ${error.message}`);
+        return;
+      }
+
+      // Clear all localStorage keys related to the app
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("dp_onboarding_done");
+        localStorage.removeItem("dp_plan");
+        localStorage.removeItem("dp_items");
+      }
+
+      // Clear local state
+      setUser(null);
+      setItems([]);
+      setProfile(null);
+
+      // Redirect to login page
+      router.push("/login");
+    } catch (err) {
+      // Handle unexpected errors
+      alert(`Failed to sign out: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
   }
 
   /* ---------------- RFQ SAVE ---------------- */
