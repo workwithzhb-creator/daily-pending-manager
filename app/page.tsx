@@ -914,9 +914,21 @@ export default function Page() {
           <div className="space-y-3">
             {visibleItems.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-slate-500 text-sm">
-                  {user ? "No tasks yet" : "Sign in to start tracking your RFQs."}
-                </p>
+                {user ? (
+                  <p className="text-slate-500 text-sm">
+                    No tasks yet
+                  </p>
+                ) : (
+                  <p className="text-slate-500 text-sm">
+                    <button
+                      onClick={() => router.push("/login")}
+                      className="text-indigo-600 hover:text-indigo-700 font-medium underline underline-offset-2 transition-colors"
+                    >
+                      Sign in
+                    </button>{" "}
+                    to manage your pending RFQs and follow-ups.
+                  </p>
+                )}
               </div>
             ) : (
               visibleItems.map((item) => (
