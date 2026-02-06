@@ -264,8 +264,13 @@ export function ItemDetailSheet({
                   // Show PO payment terms modal
                   setShowPOPaymentModal(true);
                 } else if (item.pendingType === "invoice") {
-                  // Show invoice due date modal
-                  setShowInvoiceDueDateModal(true);
+                  // 100% Advance: no due date needed, move to completed
+                  if (item.paymentStage === "advance") {
+                    onStatusChange(item.id, "completed");
+                  } else {
+                    // Credit or Partial Advance + Balance: show due date popup, then payment follow-up
+                    setShowInvoiceDueDateModal(true);
+                  }
                 } else {
                   // Normal flow
                   const nextStage = getNextStage(
@@ -295,8 +300,13 @@ export function ItemDetailSheet({
                 // Show PO payment terms modal
                 setShowPOPaymentModal(true);
               } else if (item.pendingType === "invoice") {
-                // Show invoice due date modal
-                setShowInvoiceDueDateModal(true);
+                // 100% Advance: no due date needed, move to completed
+                if (item.paymentStage === "advance") {
+                  onStatusChange(item.id, "completed");
+                } else {
+                  // Credit or Partial Advance + Balance: show due date popup, then payment follow-up
+                  setShowInvoiceDueDateModal(true);
+                }
               } else {
                 // Normal flow
                 const nextStage = getNextStage(

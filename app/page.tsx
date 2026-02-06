@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { PipelineStages } from "@/components/pipeline-stages";
 import { SummaryCards } from "@/components/summary-cards";
@@ -17,59 +17,6 @@ import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
 import { MigrationModal } from "@/components/migration-modal";
 import { createClient } from "@/lib/supabase/client";
-
-/* ---------------- MOCK DATA ---------------- */
-
-const mockPendingItems: PendingItem[] = [
-  {
-    id: "1",
-    customerName: "Sharma Constructions",
-    pendingType: "quotation",
-    createdAt: new Date("2026-02-04T09:00:00"),
-    timePending: "",
-    label: "TMT Steel Bars • 50 tonnes",
-  },
-  {
-    id: "2",
-    customerName: "Patel Infrastructure",
-    pendingType: "quotation",
-    createdAt: new Date("2026-02-03T15:00:00"),
-    timePending: "",
-    label: "Cement • 200 bags",
-  },
-  {
-    id: "3",
-    customerName: "Singh Builders",
-    pendingType: "followup",
-    createdAt: new Date("2026-02-02T11:00:00"),
-    timePending: "",
-    label: "Sent quote on Jan 28",
-  },
-  {
-    id: "4",
-    customerName: "Sunrise Realty",
-    pendingType: "delivery",
-    createdAt: new Date("2026-02-04T07:30:00"),
-    timePending: "",
-    label: "Ready for dispatch",
-  },
-  {
-    id: "5",
-    customerName: "RK Constructions",
-    pendingType: "invoice",
-    createdAt: new Date("2026-02-01T10:00:00"),
-    timePending: "",
-    label: "Delivery completed",
-  },
-  {
-    id: "6",
-    customerName: "Agarwal Infra",
-    pendingType: "paymentFollowup",
-    createdAt: new Date("2026-01-28T09:00:00"),
-    timePending: "",
-    label: "₹4,50,000 due",
-  },
-];
 
 /* ---------------- HELPERS ---------------- */
 
@@ -157,7 +104,7 @@ function safeParsePendingItems(raw: string): PendingItem[] | null {
 
 export default function Page() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<PendingItem[]>([]);
   const [activeStage, setActiveStage] = useState<PendingType | "all">("all");
   const [activePriority, setActivePriority] = useState<PriorityFilter>(null);
@@ -183,6 +130,39 @@ export default function Page() {
   const tasksRef = useRef<HTMLDivElement>(null);
   const summaryCardsRef = useRef<HTMLDivElement>(null);
   const pipelineStagesRef = useRef<HTMLDivElement>(null);
+
+  async function refetchTasks(userId: string) {
+    const { data: itemsData, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error loading tasks:", error);
+      setItems([]);
+      return [];
+    }
+
+    const convertedItems: PendingItem[] = (itemsData || []).map((item: any) => ({
+      id: item.id,
+      customerName: item.customer_name,
+      pendingType: item.pending_type,
+      // IMPORTANT: created_at comes from Supabase; convert to Date for getTimePending()
+      createdAt: item.created_at ? new Date(item.created_at) : undefined,
+      timePending: "",
+      label: item.label || "",
+      value: item.value || undefined,
+      invoiceDueDate: item.invoice_due_date || undefined,
+      paymentStage: item.payment_stage || undefined,
+      whatsapp: item.whatsapp || undefined,
+      rfqNumber: item.rfq_number || undefined,
+      completedAt: item.completed_at || undefined,
+    }));
+
+    setItems(convertedItems);
+    return convertedItems;
+  }
 
   /* ---------------- LOAD EVERYTHING ON FIRST OPEN ---------------- */
 
@@ -247,36 +227,10 @@ export default function Page() {
         }
       }
 
-      // Load items from Supabase
-      const { data: itemsData, error } = await supabase
-        .from("tasks")
-        .select("*")
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false });
+      // Load items from Supabase (source of truth)
+      const convertedItems = await refetchTasks(currentUser.id);
 
-      if (error) {
-        console.error("Error loading tasks:", error);
-      }
-
-      if (itemsData && itemsData.length > 0) {
-        // Convert Supabase data to PendingItem format
-        const convertedItems: PendingItem[] = itemsData.map((item: any) => ({
-          id: item.id,
-          customerName: item.customer_name,
-          pendingType: item.pending_type,
-          createdAt: item.created_at ? new Date(item.created_at) : undefined,
-          timePending: "",
-          label: item.label || "",
-          value: item.value || undefined,
-          invoiceDueDate: item.invoice_due_date || undefined,
-          paymentStage: item.payment_stage || undefined,
-          whatsapp: item.whatsapp || undefined,
-          rfqNumber: item.rfq_number || undefined,
-          completedAt: item.completed_at || undefined,
-        }));
-        setItems(convertedItems);
-        setLoading(false);
-      } else {
+      if (convertedItems.length === 0) {
         // Check for localStorage data for migration (only if user just signed in)
         const savedItems = localStorage.getItem("dp_items");
         if (savedItems) {
@@ -290,8 +244,9 @@ export default function Page() {
         }
         // Empty dashboard for new users
         setItems([]);
-        setLoading(false);
       }
+
+      setLoading(false);
 
       // First-time onboarding for logged-in users: show once (localStorage)
       if (typeof window !== "undefined" && localStorage.getItem("dp_onboarding_done") !== "yes") {
@@ -319,41 +274,6 @@ export default function Page() {
       subscription.unsubscribe();
     };
   }, [router, supabase]);
-
-  /* ---------------- SAVE ITEMS TO SUPABASE ---------------- */
-
-  useEffect(() => {
-    async function saveItems() {
-      if (loading || !user || items.length === 0) return;
-
-      // Convert items to Supabase format and upsert
-      const tasksToSave = items.map((item) => ({
-        id: item.id,
-        user_id: user.id,
-        customer_name: item.customerName,
-        pending_type: item.pendingType,
-        created_at: item.createdAt?.toISOString() || new Date().toISOString(),
-        label: item.label || "",
-        value: item.value || null,
-        invoice_due_date: item.invoiceDueDate || null,
-        payment_stage: item.paymentStage || null,
-        whatsapp: item.whatsapp || null,
-        rfq_number: item.rfqNumber || null,
-        completed_at: item.completedAt || null,
-      }));
-
-      // Delete all existing tasks and insert new ones (simple approach)
-      await supabase.from("tasks").delete().eq("user_id", user.id);
-
-      if (tasksToSave.length > 0) {
-        await supabase.from("tasks").insert(tasksToSave);
-      }
-    }
-
-    if (!loading && user) {
-      saveItems();
-    }
-  }, [items, loading, user, supabase]);
 
   function dismissOnboarding() {
     if (typeof window !== "undefined") {
@@ -419,30 +339,8 @@ export default function Page() {
     // Clear localStorage
     localStorage.removeItem("dp_items");
 
-    // Reload items
-    const { data: itemsData } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-
-    if (itemsData) {
-      const convertedItems: PendingItem[] = itemsData.map((item: any) => ({
-        id: item.id,
-        customerName: item.customer_name,
-        pendingType: item.pending_type,
-        createdAt: item.created_at ? new Date(item.created_at) : undefined,
-        timePending: "",
-        label: item.label || "",
-        value: item.value || undefined,
-        invoiceDueDate: item.invoice_due_date || undefined,
-        paymentStage: item.payment_stage || undefined,
-        whatsapp: item.whatsapp || undefined,
-        rfqNumber: item.rfq_number || undefined,
-        completedAt: item.completed_at || undefined,
-      }));
-      setItems(convertedItems);
-    }
+    // Reload items from Supabase
+    await refetchTasks(user.id);
 
     setShowMigrationModal(false);
   }
@@ -519,32 +417,19 @@ export default function Page() {
       return;
     }
 
-    const newItem: PendingItem = {
-      id: crypto.randomUUID(),
-      customerName: data.customerName,
-      pendingType: "quotation",
-      createdAt: new Date(),
-      timePending: "",
-      label: data.note || data.rfqNumber,
-      whatsapp: data.whatsapp,
-      rfqNumber: data.rfqNumber,
-    };
-
-    // Update local state immediately
-    setItems((prev) => [newItem, ...prev]);
-
-    // Save to Supabase
+    // Insert into Supabase (source of truth), then refetch so created_at is consistent
+    const newId = crypto.randomUUID();
     await supabase.from("tasks").insert({
-      id: newItem.id,
+      id: newId,
       user_id: user.id,
-      customer_name: newItem.customerName,
-      pending_type: newItem.pendingType,
-      created_at: newItem.createdAt?.toISOString() || new Date().toISOString(),
-      label: newItem.label || "",
-      whatsapp: newItem.whatsapp || null,
-      rfq_number: newItem.rfqNumber || null,
+      customer_name: data.customerName,
+      pending_type: "quotation",
+      label: data.note || data.rfqNumber || "",
+      whatsapp: data.whatsapp || null,
+      rfq_number: data.rfqNumber || null,
     });
 
+    await refetchTasks(user.id);
     setShowAddRFQ(false);
   }
 
@@ -559,49 +444,33 @@ export default function Page() {
     const isCompleted = status === "completed";
     const completedAtValue = isCompleted ? new Date().toISOString() : undefined;
 
-    // Update local state immediately
-    setItems((prev) =>
-      prev.map((i) => {
-        if (i.id !== id) return i;
+    const currentItem = items.find((i) => i.id === id);
+    if (!currentItem) return;
 
-        if (
-          i.pendingType === "invoice" &&
-          status === "paymentFollowup" &&
-          i.paymentStage === "advance"
-        ) {
-          return {
-            ...i,
-            pendingType: status,
-            paymentStage: "balance",
-            ...(invoiceDueDate && { invoiceDueDate }),
-            ...(completedAtValue && { completedAt: completedAtValue }),
-          };
-        }
+    // Preserve existing stage logic; just persist the correct fields.
+    let paymentStageToWrite: "advance" | "balance" | null =
+      paymentStage !== undefined ? paymentStage : (currentItem.paymentStage ?? null);
 
-        return {
-          ...i,
-          pendingType: status,
-          ...(paymentStage !== undefined && { paymentStage }),
-          ...(invoiceDueDate && { invoiceDueDate }),
-          ...(completedAtValue && { completedAt: completedAtValue }),
-        };
-      })
-    );
-
-    // Update in Supabase
-    const updatedItem = items.find((i) => i.id === id);
-    if (updatedItem) {
-      await supabase
-        .from("tasks")
-        .update({
-          pending_type: status,
-          payment_stage: paymentStage || null,
-          invoice_due_date: invoiceDueDate || null,
-          completed_at: completedAtValue || null,
-        })
-        .eq("id", id)
-        .eq("user_id", user.id);
+    if (
+      currentItem.pendingType === "invoice" &&
+      status === "paymentFollowup" &&
+      currentItem.paymentStage === "advance"
+    ) {
+      paymentStageToWrite = "balance";
     }
+
+    await supabase
+      .from("tasks")
+      .update({
+        pending_type: status,
+        payment_stage: paymentStageToWrite,
+        invoice_due_date: invoiceDueDate || null,
+        completed_at: completedAtValue || null,
+      })
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    await refetchTasks(user.id);
 
     setSelectedItem(null);
   }
