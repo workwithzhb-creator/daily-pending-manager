@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 export function AuthSheet({
   open,
@@ -10,6 +10,7 @@ export function AuthSheet({
   open: boolean;
   onSuccess: () => void;
 }) {
+  const supabase = createClient();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

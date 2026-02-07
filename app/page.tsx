@@ -17,7 +17,7 @@ import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
 import { MigrationModal } from "@/components/migration-modal";
 import EnableNotificationsButton from "@/components/EnableNotificationsButton";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 import OneSignal from "react-onesignal";
 
 /* ---------------- HELPERS ---------------- */
@@ -106,6 +106,9 @@ function safeParsePendingItems(raw: string): PendingItem[] | null {
 
 export default function Page() {
   const router = useRouter();
+
+  const supabase = useMemo(() => createClient(), []);
+
   const [items, setItems] = useState<PendingItem[]>([]);
   const [activeStage, setActiveStage] = useState<PendingType | "all">("all");
   const [activePriority, setActivePriority] = useState<PriorityFilter>(null);
@@ -151,8 +154,9 @@ export default function Page() {
       customerName: item.customer_name,
       pendingType: item.pending_type,
       createdAt: item.created_at ? new Date(item.created_at) : undefined,
-      // IMPORTANT: stage_updated_at comes from Supabase; convert to Date for getTimePending()
-      stageUpdatedAt: item.stage_updated_at ? new Date(item.stage_updated_at) : undefined,
+      stageUpdatedAt: item.stage_updated_at
+        ? new Date(item.stage_updated_at)
+        : undefined,
       timePending: "",
       label: item.label || "",
       value: item.value || undefined,
@@ -179,8 +183,11 @@ export default function Page() {
         setUser(null);
         setItems([]);
         setLoading(false);
-        // Onboarding: show once for guests using localStorage
-        if (typeof window !== "undefined" && localStorage.getItem("dp_onboarding_done") !== "yes") {
+
+        if (
+          typeof window !== "undefined" &&
+          localStorage.getItem("dp_onboarding_done") !== "yes"
+        ) {
           setShowOnboarding(true);
         }
         return;
@@ -192,10 +199,14 @@ export default function Page() {
       const { data: profileData } = await supabase
         .from("profiles")
         .select("name, company_name, mobile")
-        .eq("user_id", currentUser.id)
+        .eq("id", currentUser.id)
         .single();
 
-      if (profileData?.name || profileData?.company_name || profileData?.mobile) {
+      if (
+        profileData?.name ||
+        profileData?.company_name ||
+        profileData?.mobile
+      ) {
         setProfile({
           name: profileData.name || "",
           countryCode: "+966",
@@ -234,25 +245,24 @@ export default function Page() {
       const convertedItems = await refetchTasks(currentUser.id);
 
       if (convertedItems.length === 0) {
-        // Check for localStorage data for migration (only if user just signed in)
         const savedItems = localStorage.getItem("dp_items");
         if (savedItems) {
           const parsed = safeParsePendingItems(savedItems);
           if (parsed && parsed.length > 0) {
-            // Show migration modal
             setShowMigrationModal(true);
             setLoading(false);
             return;
           }
         }
-        // Empty dashboard for new users
         setItems([]);
       }
 
       setLoading(false);
 
-      // First-time onboarding for logged-in users: show once (localStorage)
-      if (typeof window !== "undefined" && localStorage.getItem("dp_onboarding_done") !== "yes") {
+      if (
+        typeof window !== "undefined" &&
+        localStorage.getItem("dp_onboarding_done") !== "yes"
+      ) {
         setShowOnboarding(true);
       }
     }
@@ -276,7 +286,7 @@ export default function Page() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, supabase]);
 
   // Check notification permission and hide banner when already enabled
   useEffect(() => {
@@ -294,19 +304,27 @@ export default function Page() {
       }
     };
 
-    // Check after a short delay so OneSignal init can complete
     const t = setTimeout(checkNotificationPermission, 500);
     const interval = setInterval(checkNotificationPermission, 2000);
 
     const handleChange = () => checkNotificationPermission();
     OneSignal?.User?.PushSubscription?.addEventListener?.("change", handleChange);
-    OneSignal?.Notifications?.addEventListener?.("permissionChange", handleChange);
+    OneSignal?.Notifications?.addEventListener?.(
+      "permissionChange",
+      handleChange
+    );
 
     return () => {
       clearTimeout(t);
       clearInterval(interval);
-      OneSignal?.User?.PushSubscription?.removeEventListener?.("change", handleChange);
-      OneSignal?.Notifications?.removeEventListener?.("permissionChange", handleChange);
+      OneSignal?.User?.PushSubscription?.removeEventListener?.(
+        "change",
+        handleChange
+      );
+      OneSignal?.Notifications?.removeEventListener?.(
+        "permissionChange",
+        handleChange
+      );
     };
   }, []);
 
@@ -320,7 +338,7 @@ export default function Page() {
   async function handleSaveProfile(data: UserProfile) {
     if (!user) return;
     await supabase.from("profiles").upsert({
-      user_id: user.id,
+      id: user.id,
       name: data.name || "",
     });
     setProfile(data);
@@ -353,7 +371,6 @@ export default function Page() {
       return;
     }
 
-    // Convert and save to Supabase
     const now = new Date().toISOString();
     const tasksToSave = parsed.map((item) => ({
       id: item.id,
@@ -361,7 +378,7 @@ export default function Page() {
       customer_name: item.customerName,
       pending_type: item.pendingType,
       created_at: item.createdAt?.toISOString() || now,
-      stage_updated_at: now, // Set stage_updated_at for migrated items
+      stage_updated_at: now,
       label: item.label || "",
       value: item.value || null,
       invoice_due_date: item.invoiceDueDate || null,
@@ -373,10 +390,8 @@ export default function Page() {
 
     await supabase.from("tasks").insert(tasksToSave);
 
-    // Clear localStorage
     localStorage.removeItem("dp_items");
 
-    // Reload items from Supabase
     await refetchTasks(user.id);
 
     setShowMigrationModal(false);
@@ -435,7 +450,6 @@ export default function Page() {
 
   async function handleLogout() {
     try {
-      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -443,23 +457,23 @@ export default function Page() {
         return;
       }
 
-      // Clear all localStorage keys related to the app
       if (typeof window !== "undefined") {
         localStorage.removeItem("dp_onboarding_done");
         localStorage.removeItem("dp_plan");
         localStorage.removeItem("dp_items");
       }
 
-      // Clear local state
       setUser(null);
       setItems([]);
       setProfile(null);
 
-      // Redirect to login page
       router.push("/login");
     } catch (err) {
-      // Handle unexpected errors
-      alert(`Failed to sign out: ${err instanceof Error ? err.message : "Unknown error"}`);
+      alert(
+        `Failed to sign out: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -477,7 +491,6 @@ export default function Page() {
       return;
     }
 
-    // Insert into Supabase (source of truth), then refetch so created_at is consistent
     const newId = crypto.randomUUID();
     const now = new Date().toISOString();
     await supabase.from("tasks").insert({
@@ -509,9 +522,10 @@ export default function Page() {
     const currentItem = items.find((i) => i.id === id);
     if (!currentItem) return;
 
-    // Preserve existing stage logic; just persist the correct fields.
     let paymentStageToWrite: "advance" | "balance" | null =
-      paymentStage !== undefined ? paymentStage : currentItem.paymentStage ?? null;
+      paymentStage !== undefined
+        ? paymentStage
+        : currentItem.paymentStage ?? null;
 
     if (
       currentItem.pendingType === "invoice" &&
@@ -523,9 +537,11 @@ export default function Page() {
 
     const updatePayload: Record<string, any> = {
       pending_type: status,
-      stage_updated_at: new Date().toISOString(), // Update stage timestamp when moving to next stage
+      stage_updated_at: new Date().toISOString(),
       payment_stage: paymentStageToWrite,
-      ...(invoiceDueDate !== undefined && { invoice_due_date: invoiceDueDate || null }),
+      ...(invoiceDueDate !== undefined && {
+        invoice_due_date: invoiceDueDate || null,
+      }),
       completed_at: completedAtValue || null,
     };
 
@@ -547,11 +563,9 @@ export default function Page() {
   async function handleDeleteItem(id: string) {
     if (!user) return;
 
-    // Update local state immediately
     setItems((prev) => prev.filter((i) => i.id !== id));
     setSelectedItem(null);
 
-    // Delete from Supabase
     await supabase.from("tasks").delete().eq("id", id).eq("user_id", user.id);
   }
 
@@ -559,7 +573,7 @@ export default function Page() {
     if (!user) return;
 
     const moveBackMap: Record<PendingType, PendingType | null> = {
-      quotation: null, // Cannot go back
+      quotation: null,
       followup: "quotation",
       delivery: "followup",
       invoice: "delivery",
@@ -573,7 +587,6 @@ export default function Page() {
     const previousStage = moveBackMap[currentItem.pendingType];
     if (!previousStage) return;
 
-    // Update local state immediately
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
@@ -581,19 +594,20 @@ export default function Page() {
         return {
           ...i,
           pendingType: previousStage,
-          // Clear completedAt if moving back from completed
           ...(i.pendingType === "completed" && { completedAt: undefined }),
         };
       })
     );
 
-    // Update in Supabase
     await supabase
       .from("tasks")
       .update({
         pending_type: previousStage,
-        stage_updated_at: new Date().toISOString(), // Update stage timestamp when moving back
-        completed_at: currentItem.pendingType === "completed" ? null : currentItem.completedAt || null,
+        stage_updated_at: new Date().toISOString(),
+        completed_at:
+          currentItem.pendingType === "completed"
+            ? null
+            : currentItem.completedAt || null,
       })
       .eq("id", id)
       .eq("user_id", user.id);
@@ -646,17 +660,6 @@ export default function Page() {
 
   /* ---------------- COUNTS ---------------- */
 
-  function isCreatedToday(createdAt?: Date): boolean {
-    if (!createdAt) return false;
-    const now = new Date();
-    const created = new Date(createdAt);
-    return (
-      now.getFullYear() === created.getFullYear() &&
-      now.getMonth() === created.getMonth() &&
-      now.getDate() === created.getDate()
-    );
-  }
-
   function isCompletedToday(completedAt?: string): boolean {
     if (!completedAt) return false;
     const now = new Date();
@@ -674,9 +677,7 @@ export default function Page() {
   let todayCompletedCount = 0;
 
   items.forEach((i) => {
-    // Exclude completed tasks from urgent/today counts
     if (i.pendingType === "completed") {
-      // Count completed tasks completed today (using completedAt)
       if (isCompletedToday(i.completedAt)) {
         todayCompletedCount++;
       }
@@ -701,7 +702,6 @@ export default function Page() {
       }
     }
 
-    // Calculate today tasks for ProgressRing
     const isTodayTask =
       days === 0 ||
       (i.pendingType === "paymentFollowup" &&
@@ -710,7 +710,6 @@ export default function Page() {
         daysUntil >= 0 &&
         daysUntil <= 7);
 
-    // Count today tasks (excluding completed)
     if (isTodayTask) {
       todayTotalCount++;
     }
@@ -719,9 +718,7 @@ export default function Page() {
   let visibleItems = [...items];
 
   if (activePriority) {
-    // Exclude completed tasks when filtering by urgent/today
     visibleItems = visibleItems.filter((i) => {
-      // Completed tasks should not appear in urgent/today filters
       if (i.pendingType === "completed") {
         return false;
       }
@@ -748,7 +745,8 @@ export default function Page() {
     visibleItems = visibleItems.filter((i) => i.pendingType === activeStage);
   }
 
-  const completedCount = items.filter((i) => i.pendingType === "completed").length;
+  const completedCount = items.filter((i) => i.pendingType === "completed")
+    .length;
   const totalCount = items.length;
 
   const hideFooter =
@@ -903,13 +901,7 @@ export default function Page() {
 
       <main className="px-6 pb-32 max-w-lg mx-auto space-y-8">
         {showNotificationBanner && (
-          <div
-            className="
-              rounded-2xl border border-slate-200/80 bg-white/90 backdrop-blur
-              px-4 py-3 flex items-center justify-between gap-4
-              shadow-sm
-            "
-          >
+          <div className="rounded-2xl border border-slate-200/80 bg-white/90 backdrop-blur px-4 py-3 flex items-center justify-between gap-4 shadow-sm">
             <p className="text-sm text-slate-600 flex-1 min-w-0">
               Enable Notifications to get quotation, invoice & payment reminders.
             </p>
@@ -954,9 +946,7 @@ export default function Page() {
           className={`rounded-3xl p-4 ${getTasksContainerBg()} shadow border`}
         >
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${getTaskHeaderColor()}`}
-            />
+            <span className={`w-1.5 h-1.5 rounded-full ${getTaskHeaderColor()}`} />
             {getTaskHeading()}
           </h2>
 
@@ -964,9 +954,7 @@ export default function Page() {
             {visibleItems.length === 0 ? (
               <div className="text-center py-12">
                 {user ? (
-                  <p className="text-slate-500 text-sm">
-                    No tasks yet
-                  </p>
+                  <p className="text-slate-500 text-sm">No tasks yet</p>
                 ) : (
                   <p className="text-slate-500 text-sm">
                     <button
@@ -1041,7 +1029,7 @@ export default function Page() {
         <ProfileSetupSheet
           open={showProfileSetup}
           onSave={handleSaveProfile}
-          onClose={handleCloseProfile}
+          onClose={() => setShowProfileSetup(false)}
           initialData={profile}
         />
 
@@ -1054,51 +1042,9 @@ export default function Page() {
           }}
         />
 
-        {/* Free plan limit modal */}
-        {showFreeLimitModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-6"
-            onClick={() => setShowFreeLimitModal(false)}
-          >
-            <div
-              className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-              aria-hidden
-            />
-            <div
-              className="relative max-w-sm w-full rounded-3xl bg-gradient-to-b from-white to-slate-50/95 px-6 py-8 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-xl font-bold text-slate-900 text-center">
-                You&apos;re at your Free Plan limit
-              </h2>
-              <p className="text-sm text-slate-600 text-center mt-4 leading-relaxed">
-                Free plan allows only 10 active tasks. Upgrade to track unlimited
-                quotations, invoices, and payments.
-              </p>
-              <div className="mt-6 space-y-3">
-                <button
-                  onClick={() => {
-                    setShowFreeLimitModal(false);
-                    handleUpgrade();
-                  }}
-                  className="w-full h-12 rounded-2xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/25 active:scale-[0.98] transition-transform"
-                >
-                  Upgrade to Basic
-                </button>
-                <button
-                  onClick={() => setShowFreeLimitModal(false)}
-                  className="w-full h-11 rounded-2xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Not now
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <AccountPlanSheet
           open={showAccountPlan}
-          onClose={handleCloseAccountPlan}
+          onClose={() => setShowAccountPlan(false)}
           profile={profile}
           plan={plan}
           onUpgrade={handleUpgradeFromAccount}
@@ -1106,13 +1052,11 @@ export default function Page() {
           onLogout={handleLogout}
         />
 
-        {/* Migration Modal */}
         <MigrationModal
           open={showMigrationModal}
           onImport={handleMigrationImport}
           onSkip={handleMigrationSkip}
         />
-
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
 
 const COUNTRY_OPTIONS = [
   { code: "+966", flag: "🇸🇦", tz: "Asia/Riyadh" },
@@ -26,6 +26,7 @@ function getDefaultCountryCode(): string {
 }
 
 export default function SignupPage() {
+  const supabase = createClient();
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
@@ -69,7 +70,7 @@ export default function SignupPage() {
     const user = authData?.user;
     if (user?.id) {
       const { error: profileError } = await supabase.from("profiles").insert({
-        user_id: user.id,
+        id: user.id,
         name: name.trim() || null,
         company_name: companyName.trim() || null,
         mobile: mobileFull,
