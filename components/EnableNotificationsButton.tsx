@@ -2,45 +2,76 @@
 
 import { supabase } from "@/lib/supabase/client";
 
+const PERMISSION_POLL_MS = 500;
+const PERMISSION_WAIT_MS = 15000;
+const SUBSCRIPTION_RETRIES = 5;
+const RETRY_DELAY_MS = 1000;
+
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     const OneSignal = (await import("react-onesignal")).default;
 
-    // Ask notification permission
+    // 1. Prompt push permission
     await OneSignal.Slidedown.promptPush();
 
-    // Wait for subscription to register
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // 2. Wait until permission is granted (poll)
+    const permissionGranted = await new Promise<boolean>((resolve) => {
+      const start = Date.now();
+      const check = () => {
+        const granted =
+          OneSignal.Notifications?.permission === true ||
+          OneSignal.User?.PushSubscription?.optedIn === true;
+        if (granted) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() - start >= PERMISSION_WAIT_MS) {
+          resolve(false);
+          return;
+        }
+        setTimeout(check, PERMISSION_POLL_MS);
+      };
+      check();
+    });
 
-    // Get OneSignal subscription ID
-    const subscriptionId = OneSignal.User?.PushSubscription?.id;
-
-    console.log("OneSignal Subscription ID:", subscriptionId);
-
-    if (!subscriptionId) {
-      alert("Subscription ID not found. Please refresh and try again.");
+    if (!permissionGranted) {
+      alert("Notification permission was not granted. You can enable it later in your browser settings.");
       return;
     }
 
-    // Get logged in user from Supabase Auth
+    // 3. Fetch OneSignal subscription ID with retries (up to 5 times, 1 sec each)
+    let subscriptionId: string | null | undefined = null;
+    for (let attempt = 0; attempt < SUBSCRIPTION_RETRIES; attempt++) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      subscriptionId = OneSignal.User?.PushSubscription?.id;
+      if (subscriptionId) break;
+    }
+
+    if (!subscriptionId) {
+      alert(
+        "We couldn’t register your device for notifications after a few tries. Please refresh the page and try again, or check your browser settings."
+      );
+      return;
+    }
+
+    // 4. Get logged in user and save to Supabase profiles
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
-      alert("Please login first.");
+      alert("Please sign in first to save your notification preferences.");
       return;
     }
 
-    // Save subscription ID into profiles table
     const { error } = await supabase
       .from("profiles")
       .update({ onesignal_id: subscriptionId })
-      .eq("id", user.id);
+      .eq("user_id", user.id);
 
     if (error) {
       console.error("Error saving OneSignal ID:", error);
-      alert("Failed to save notification subscription.");
+      alert("Notifications were allowed but we couldn’t save your preference. Please try again.");
       return;
     }
 
