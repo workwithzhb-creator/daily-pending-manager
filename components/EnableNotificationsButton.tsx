@@ -6,29 +6,38 @@ import { createClient } from "@/lib/supabase/client";
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     try {
-      // 1) Ask permission
+      // Ask notification permission
       await OneSignal.Slidedown.promptPush();
 
-      // 2) Get subscription ID
-      const subscriptionId = OneSignal?.User?.PushSubscription?.id;
+      // Wait until OneSignal generates subscription ID
+      let subscriptionId: string | null = null;
+
+      for (let i = 0; i < 15; i++) {
+        subscriptionId = OneSignal?.User?.PushSubscription?.id ?? null;
+        if (subscriptionId) break;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
 
       if (!subscriptionId) {
         alert("Subscription ID not found. Please refresh and try again.");
         return;
       }
 
-      // 3) Get logged-in user
+      // Create supabase client
       const supabase = createClient();
+
+      // Get logged in user
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (userError || !user) {
         alert("User not logged in.");
         return;
       }
 
-      // 4) Save subscriptionId in profiles table
+      // Update profiles table
       const { error } = await supabase
         .from("profiles")
         .update({ onesignal_id: subscriptionId })
