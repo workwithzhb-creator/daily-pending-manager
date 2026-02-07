@@ -17,7 +17,7 @@ import { UpgradeSheet } from "@/components/upgrade-sheet";
 import { AccountPlanSheet } from "@/components/account-plan-sheet";
 import { MigrationModal } from "@/components/migration-modal";
 import EnableNotificationsButton from "@/components/EnableNotificationsButton";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import OneSignal from "react-onesignal";
 
 /* ---------------- HELPERS ---------------- */
@@ -106,7 +106,6 @@ function safeParsePendingItems(raw: string): PendingItem[] | null {
 
 export default function Page() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<PendingItem[]>([]);
   const [activeStage, setActiveStage] = useState<PendingType | "all">("all");
   const [activePriority, setActivePriority] = useState<PriorityFilter>(null);
@@ -277,7 +276,7 @@ export default function Page() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, supabase]);
+  }, [router]);
 
   // Check notification permission and hide banner when already enabled
   useEffect(() => {
@@ -914,9 +913,7 @@ export default function Page() {
             <p className="text-sm text-slate-600 flex-1 min-w-0">
               Enable Notifications to get quotation, invoice & payment reminders.
             </p>
-            <EnableNotificationsButton
-              className="bg-gradient-to-br from-indigo-500 to-purple-500 text-white px-4 py-2 rounded-xl shadow shrink-0 text-sm font-medium"
-            />
+            <EnableNotificationsButton />
           </div>
         )}
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 
 const COUNTRY_OPTIONS = [
   { code: "+966", flag: "🇸🇦", tz: "Asia/Riyadh" },
@@ -36,7 +36,6 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     setCountryCode(getDefaultCountryCode());
