@@ -6,27 +6,31 @@ import { createClient } from "@/lib/supabase/client";
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     try {
-      // Ask notification permission
+      // 1) Ask user permission
       await OneSignal.Slidedown.promptPush();
 
-      // Wait until OneSignal generates subscription ID
+      // 2) Wait until OneSignal generates subscription id
       let subscriptionId: string | null = null;
 
-      for (let i = 0; i < 15; i++) {
-        subscriptionId = OneSignal?.User?.PushSubscription?.id ?? null;
+      for (let i = 0; i < 20; i++) {
+        subscriptionId = (OneSignal as any)?.User?.PushSubscription?.id ?? null;
+
         if (subscriptionId) break;
-        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+
+      console.log("Subscription ID:", subscriptionId);
 
       if (!subscriptionId) {
         alert("Subscription ID not found. Please refresh and try again.");
         return;
       }
 
-      // Create supabase client
+      // 3) Create Supabase client
       const supabase = createClient();
 
-      // Get logged in user
+      // 4) Get logged-in user
       const {
         data: { user },
         error: userError,
@@ -37,20 +41,22 @@ export default function EnableNotificationsButton() {
         return;
       }
 
-      // Update profiles table
+      // 5) Update profile with OneSignal ID
       const { error } = await supabase
         .from("profiles")
         .update({ onesignal_id: subscriptionId })
-        .eq("user_id", user.id);
+        .eq("id", user.id);
 
       if (error) {
-        alert("Failed to save OneSignal subscription: " + error.message);
+        console.error("Supabase update error:", error);
+        alert("Failed to save OneSignal ID: " + error.message);
         return;
       }
 
-      alert("Notification enabled successfully!");
+      alert("Notifications enabled successfully!");
     } catch (err: any) {
-      alert("Error enabling notifications: " + err.message);
+      console.error("Enable notification error:", err);
+      alert("Error: " + err.message);
     }
   };
 
