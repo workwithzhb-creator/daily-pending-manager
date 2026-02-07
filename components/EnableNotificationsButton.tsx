@@ -9,14 +9,14 @@ export default function EnableNotificationsButton() {
     // Prompt user
     await OneSignal.Slidedown.promptPush();
 
-    // Force opt-in (important)
+    // Force opt-in
     await OneSignal.User.PushSubscription.optIn();
 
     // Retry to fetch subscription ID
     let subscriptionId: string | null = null;
 
     for (let i = 0; i < 10; i++) {
-      subscriptionId = OneSignal.User.PushSubscription.id;
+      subscriptionId = OneSignal.User?.PushSubscription?.id ?? null;
 
       if (subscriptionId) break;
 
