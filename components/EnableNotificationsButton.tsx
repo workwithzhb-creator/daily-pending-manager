@@ -1,18 +1,18 @@
 "use client";
 
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase/client";
 
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     const OneSignal = (await import("react-onesignal")).default;
 
-    // Ask permission
+    // Ask notification permission
     await OneSignal.Slidedown.promptPush();
 
-    // Wait a bit to allow subscription to register
+    // Wait for subscription to register
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Get subscription ID correctly
+    // Get OneSignal subscription ID
     const subscriptionId = OneSignal.User?.PushSubscription?.id;
 
     console.log("OneSignal Subscription ID:", subscriptionId);
@@ -22,7 +22,7 @@ export default function EnableNotificationsButton() {
       return;
     }
 
-    // Get logged-in user
+    // Get logged in user from Supabase Auth
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -32,15 +32,15 @@ export default function EnableNotificationsButton() {
       return;
     }
 
-    // Save to profiles
+    // Save subscription ID into profiles table
     const { error } = await supabase
       .from("profiles")
       .update({ onesignal_id: subscriptionId })
       .eq("id", user.id);
 
     if (error) {
-      console.error("Supabase update error:", error);
-      alert("Error saving OneSignal ID in database.");
+      console.error("Error saving OneSignal ID:", error);
+      alert("Failed to save notification subscription.");
       return;
     }
 
