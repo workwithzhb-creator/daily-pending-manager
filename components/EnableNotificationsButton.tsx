@@ -8,46 +8,52 @@ export default function EnableNotificationsButton() {
     try {
       await OneSignal.Slidedown.promptPush();
 
-      const supabase = createClient();
+      let subscriptionId: string | null = null;
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+      for (let i = 0; i < 15; i++) {
+        subscriptionId =
+          (OneSignal as any)?.User?.PushSubscription?.id ||
+          (OneSignal as any)?.User?.PushSubscription?.subscriptionId ||
+          null;
 
-      if (userError || !user) {
-        alert("User not logged in. Please login again.");
-        console.log("User Error:", userError);
-        return;
+        if (subscriptionId) break;
+
+        await new Promise((res) => setTimeout(res, 500));
       }
 
-      // Get subscription id
-      const subscriptionId = OneSignal.User.PushSubscription.id;
-
-      console.log("Subscription ID:", subscriptionId);
+      console.log("OneSignal Subscription ID:", subscriptionId);
 
       if (!subscriptionId) {
         alert("Subscription ID not found. Please refresh and try again.");
         return;
       }
 
-      const { data, error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        onesignal_id: subscriptionId,
-      });
+      const supabase = createClient();
 
-      console.log("UPSERT DATA:", data);
-      console.log("UPSERT ERROR:", error);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      if (error) {
-        alert("Database error: " + error.message);
+      if (!user) {
+        alert("User not logged in.");
         return;
       }
 
-      alert("OneSignal subscription saved successfully!");
-    } catch (err: any) {
-      console.log("Unexpected Error:", err);
-      alert("Unexpected error: " + err.message);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ onesignal_id: subscriptionId })
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        alert("Failed to save OneSignal subscription in database.");
+        return;
+      }
+
+      alert("Notifications enabled successfully!");
+    } catch (err) {
+      console.error("Enable notification error:", err);
+      alert("Something went wrong enabling notifications.");
     }
   };
 
