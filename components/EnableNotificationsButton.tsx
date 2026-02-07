@@ -6,57 +6,64 @@ import { createClient } from "@/lib/supabase/client";
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     try {
-      // 1) Ask user permission
+      alert("Step 1: Prompting notification...");
+
       await OneSignal.Slidedown.promptPush();
 
-      // 2) Wait until OneSignal generates subscription id
+      alert("Step 2: Permission given. Fetching subscription ID...");
+
       let subscriptionId: string | null = null;
 
       for (let i = 0; i < 20; i++) {
         subscriptionId = (OneSignal as any)?.User?.PushSubscription?.id ?? null;
-
         if (subscriptionId) break;
-
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      console.log("Subscription ID:", subscriptionId);
+      alert("Step 3: Subscription ID = " + subscriptionId);
 
       if (!subscriptionId) {
-        alert("Subscription ID not found. Please refresh and try again.");
+        alert("FAILED: Subscription ID still null.");
         return;
       }
 
-      // 3) Create Supabase client
       const supabase = createClient();
 
-      // 4) Get logged-in user
+      alert("Step 4: Checking logged-in user...");
+
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        alert("User not logged in.");
+      alert("User Error = " + JSON.stringify(userError));
+      alert("User = " + JSON.stringify(user));
+
+      if (!user) {
+        alert("FAILED: User not logged in.");
         return;
       }
 
-      // 5) Update profile with OneSignal ID
-      const { error } = await supabase
+      alert("Step 5: Updating Supabase profiles table...");
+
+      const { data, error } = await supabase
         .from("profiles")
         .update({ onesignal_id: subscriptionId })
-        .eq("id", user.id);
+        .eq("id", user.id)
+        .select();
+
+      alert("Update Error = " + JSON.stringify(error));
+      alert("Update Data = " + JSON.stringify(data));
 
       if (error) {
-        console.error("Supabase update error:", error);
-        alert("Failed to save OneSignal ID: " + error.message);
+        alert("FAILED: " + error.message);
         return;
       }
 
-      alert("Notifications enabled successfully!");
+      alert("SUCCESS: OneSignal ID saved.");
     } catch (err: any) {
-      console.error("Enable notification error:", err);
-      alert("Error: " + err.message);
+      alert("CRASH ERROR: " + err.message);
+      console.error(err);
     }
   };
 
