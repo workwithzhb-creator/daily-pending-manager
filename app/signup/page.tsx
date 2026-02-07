@@ -68,21 +68,22 @@ export default function SignupPage() {
     }
 
     const user = authData?.user;
-    if (user?.id) {
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: user.id,
-        name: name.trim() || null,
-        company_name: companyName.trim() || null,
-        mobile: mobileFull,
-        created_at: new Date().toISOString(),
-      });
 
-      if (profileError) {
-        setError(profileError.message);
-        setLoading(false);
-        return;
-      }
-    }
+if (user?.id) {
+  const { error: profileError } = await supabase.from("profiles").insert({
+    user_id: user.id,
+    name: name.trim() || null,
+    company_name: companyName.trim() || null,
+    mobile: mobileFull,
+    created_at: new Date().toISOString(),
+  });
+
+  if (profileError) {
+    setError(profileError.message);
+    setLoading(false);
+    return;
+  }
+}
 
     router.push("/");
     router.refresh();
