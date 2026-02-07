@@ -4,55 +4,65 @@ import { supabase } from "@/lib/supabase/client";
 
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
-    const OneSignal = (await import("react-onesignal")).default;
+    const OneSignal = (await import("react-onesignal")).default as any;
 
-    // Prompt user
-    await OneSignal.Slidedown.promptPush();
+    try {
+      // Show permission prompt
+      await OneSignal.Slidedown.promptPush();
 
-    // Force opt-in
-    await OneSignal.User.PushSubscription.optIn();
+      // wait 2 seconds
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Retry to fetch subscription ID
-    let subscriptionId: string | null = null;
+      // DEBUG LOGS (VERY IMPORTANT)
+      console.log("OneSignal object:", OneSignal);
+      console.log("OneSignal.User:", OneSignal?.User);
+      console.log("PushSubscription:", OneSignal?.User?.PushSubscription);
 
-    for (let i = 0; i < 10; i++) {
-      subscriptionId = OneSignal.User?.PushSubscription?.id ?? null;
+      let subscriptionId: string | null = null;
 
-      if (subscriptionId) break;
+      // Retry to fetch subscription ID (10 seconds max)
+      for (let i = 0; i < 10; i++) {
+        subscriptionId = OneSignal?.User?.PushSubscription?.id || null;
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+        console.log("Retry", i + 1, "Subscription ID:", subscriptionId);
+
+        if (subscriptionId) break;
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!subscriptionId) {
+        alert("Subscription ID not found. Please refresh and try again.");
+        return;
+      }
+
+      // Get logged in user
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Please login first.");
+        return;
+      }
+
+      // Save in profiles table
+      const { error } = await supabase
+        .from("profiles")
+        .update({ onesignal_id: subscriptionId })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Supabase update error:", error);
+        alert("Failed to save OneSignal subscription in database.");
+        return;
+      }
+
+      alert("Notifications enabled successfully!");
+    } catch (err) {
+      console.error("Enable notification error:", err);
+      alert("Error enabling notifications. Please try again.");
     }
-
-    console.log("OneSignal Subscription ID:", subscriptionId);
-
-    if (!subscriptionId) {
-      alert("Subscription ID not found. Please refresh and try again.");
-      return;
-    }
-
-    // Get logged in user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      alert("Please login first.");
-      return;
-    }
-
-    // Save to profiles table
-    const { error } = await supabase
-      .from("profiles")
-      .update({ onesignal_id: subscriptionId })
-      .eq("id", user.id);
-
-    if (error) {
-      console.error("Error saving OneSignal ID:", error);
-      alert("Failed to save notification subscription.");
-      return;
-    }
-
-    alert("Notifications enabled successfully!");
   };
 
   return (
