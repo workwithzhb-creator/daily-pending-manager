@@ -6,11 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     try {
-      alert("Step 1: Prompting notification...");
-
       await OneSignal.Slidedown.promptPush();
-
-      alert("Step 2: Permission given. Fetching subscription ID...");
 
       let subscriptionId: string | null = null;
 
@@ -20,50 +16,36 @@ export default function EnableNotificationsButton() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      alert("Step 3: Subscription ID = " + subscriptionId);
-
       if (!subscriptionId) {
-        alert("FAILED: Subscription ID still null.");
+        alert("Subscription ID not found. Please refresh and try again.");
         return;
       }
 
       const supabase = createClient();
 
-      alert("Step 4: Checking logged-in user...");
-
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      alert("User Error = " + JSON.stringify(userError));
-      alert("User = " + JSON.stringify(user));
-
       if (!user) {
-        alert("FAILED: User not logged in.");
+        alert("User not logged in.");
         return;
       }
 
-      alert("Step 5: Updating Supabase profiles table...");
-
-      const { data, error } = await supabase
+      // ✅ UPDATE USING user_id COLUMN (NOT id)
+      const { error } = await supabase
         .from("profiles")
         .update({ onesignal_id: subscriptionId })
-        .eq("id", user.id)
-        .select();
-
-      alert("Update Error = " + JSON.stringify(error));
-      alert("Update Data = " + JSON.stringify(data));
+        .eq("user_id", user.id);
 
       if (error) {
-        alert("FAILED: " + error.message);
+        alert("Failed to save OneSignal subscription: " + error.message);
         return;
       }
 
-      alert("SUCCESS: OneSignal ID saved.");
+      alert("Notification enabled successfully!");
     } catch (err: any) {
-      alert("CRASH ERROR: " + err.message);
-      console.error(err);
+      alert("Error: " + err.message);
     }
   };
 
