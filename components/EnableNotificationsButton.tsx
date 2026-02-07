@@ -14,15 +14,14 @@ export default function EnableNotificationsButton() {
         const optedIn = (OneSignal as any)?.User?.PushSubscription?.optedIn;
 
         if (optedIn) {
-          subscriptionId = (OneSignal as any)?.User?.PushSubscription?.id || null;
+          subscriptionId =
+            (OneSignal as any)?.User?.PushSubscription?.id || null;
         }
 
         if (subscriptionId) break;
 
         await new Promise((res) => setTimeout(res, 1000));
       }
-
-      console.log("OneSignal subscriptionId:", subscriptionId);
 
       if (!subscriptionId) {
         alert("Subscription ID not found. Please refresh and try again.");
@@ -40,15 +39,18 @@ export default function EnableNotificationsButton() {
         return;
       }
 
-      // ✅ IMPORTANT FIX: use .eq("id", user.id)
-      const { error } = await supabase
-        .from("profiles")
-        .update({ onesignal_id: subscriptionId })
-        .eq("id", user.id);
+      // ✅ FORCE SAVE (Upsert)
+      const { error } = await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          onesignal_id: subscriptionId,
+        },
+        { onConflict: "id" }
+      );
 
       if (error) {
-        console.error("Supabase update error:", error);
-        alert("Failed to save OneSignal subscription in database.");
+        console.error("Supabase upsert error:", error);
+        alert("Failed to save OneSignal subscription: " + error.message);
         return;
       }
 
