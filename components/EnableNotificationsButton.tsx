@@ -6,10 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 export default function EnableNotificationsButton() {
   const enableNotifications = async () => {
     try {
-      // 1) Prompt push permission
       await OneSignal.Slidedown.promptPush();
 
-      // 2) Wait until OneSignal is fully ready + subscribed
       let subscriptionId: string | null = null;
 
       for (let i = 0; i < 30; i++) {
@@ -24,18 +22,15 @@ export default function EnableNotificationsButton() {
         await new Promise((res) => setTimeout(res, 1000));
       }
 
-      console.log("OneSignal optedIn:", (OneSignal as any)?.User?.PushSubscription?.optedIn);
       console.log("OneSignal subscriptionId:", subscriptionId);
 
       if (!subscriptionId) {
-        alert(
-          "Subscription ID not found yet. Please wait 5 seconds and refresh the page, then try again."
-        );
+        alert("Subscription ID not found. Please refresh and try again.");
         return;
       }
 
-      // 3) Get logged-in user
       const supabase = createClient();
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -45,14 +40,14 @@ export default function EnableNotificationsButton() {
         return;
       }
 
-      // 4) Save subscription id to profiles table
+      // ✅ IMPORTANT FIX: use .eq("id", user.id)
       const { error } = await supabase
         .from("profiles")
         .update({ onesignal_id: subscriptionId })
-        .eq("user_id", user.id);
+        .eq("id", user.id);
 
       if (error) {
-        console.error("Supabase error:", error);
+        console.error("Supabase update error:", error);
         alert("Failed to save OneSignal subscription in database.");
         return;
       }
