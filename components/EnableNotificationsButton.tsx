@@ -39,17 +39,13 @@ export default function EnableNotificationsButton() {
         return;
       }
 
-      // ✅ FORCE SAVE (Upsert)
-      const { error } = await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          onesignal_id: subscriptionId,
-        },
-        { onConflict: "id" }
-      );
+      const { error } = await supabase
+        .from("profiles")
+        .update({ onesignal_id: subscriptionId })
+        .eq("id", user.id);
 
       if (error) {
-        console.error("Supabase upsert error:", error);
+        console.error("Supabase update error:", error);
         alert("Failed to save OneSignal subscription: " + error.message);
         return;
       }
