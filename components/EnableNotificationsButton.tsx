@@ -47,10 +47,10 @@ export default function EnableNotificationsButton() {
       }
 
       // Save in profiles table
-      const { error } = await supabase
-        .from("profiles")
-        .update({ onesignal_id: subscriptionId })
-        .eq("id", user.id);
+      const { error } = await supabase.from("profiles").upsert({
+        id: user.id,
+        onesignal_id: subscriptionId,
+      });      
 
       if (error) {
         console.error("Supabase update error:", error);
