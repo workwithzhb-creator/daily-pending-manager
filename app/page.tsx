@@ -131,6 +131,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [showNotificationBanner, setShowNotificationBanner] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const tasksRef = useRef<HTMLDivElement>(null);
   const summaryCardsRef = useRef<HTMLDivElement>(null);
@@ -767,6 +768,12 @@ export default function Page() {
     showAccountPlan ||
     showFreeLimitModal;
 
+  /* ---------------- RESET VISIBLE COUNT ON FILTER CHANGE ---------------- */
+
+  useEffect(() => {
+    setVisibleCount(20);
+  }, [activeStage, activePriority]);
+
   /* ---------------- CLICK OUTSIDE RESET ---------------- */
 
   useEffect(() => {
@@ -978,16 +985,34 @@ export default function Page() {
                 )}
               </div>
             ) : (
-              visibleItems.map((item) => (
-                <DealCard
-                  key={item.id}
-                  item={{
-                    ...item,
-                    timePending: getTimePending(item.stageUpdatedAt),
-                  }}
-                  onClick={() => setSelectedItem(item)}
-                />
-              ))
+              <>
+                {visibleItems.slice(0, visibleCount).map((item) => (
+                  <DealCard
+                    key={item.id}
+                    item={{
+                      ...item,
+                      timePending: getTimePending(item.stageUpdatedAt),
+                    }}
+                    onClick={() => setSelectedItem(item)}
+                  />
+                ))}
+                {visibleItems.length > visibleCount && (
+                  <button
+                    onClick={() => setVisibleCount((prev) => prev + 20)}
+                    className="
+                      w-full h-11
+                      rounded-xl flex items-center justify-center gap-2
+                      bg-white/80 text-slate-600
+                      font-medium text-sm
+                      border border-slate-200
+                      hover:bg-slate-50
+                      active:scale-95 transition
+                    "
+                  >
+                    Load More
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
