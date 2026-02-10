@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { PendingItem, PendingType } from "./deal-card";
 import {
@@ -119,6 +119,11 @@ export function ItemDetailSheet({
   const [showInvoiceRefModal, setShowInvoiceRefModal] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Reset showMoreOptions when item changes
+  useEffect(() => {
+    setShowMoreOptions(false);
+  }, [item?.id]);
 
   if (!item) return null;
 
