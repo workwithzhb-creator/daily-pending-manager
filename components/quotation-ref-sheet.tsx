@@ -2,31 +2,24 @@
 
 import { useState, useEffect } from "react";
 
-export function InvoiceDueDateSheet({
+export function QuotationRefSheet({
   open,
   onSave,
   onClose,
 }: {
   open: boolean;
-  onSave: (dueDate: string, invoiceRef: string | null) => void;
+  onSave: (ref: string | null) => void;
   onClose: () => void;
 }) {
-  const [dueDate, setDueDate] = useState("");
-  const [invoiceRef, setInvoiceRef] = useState("");
+  const [ref, setRef] = useState("");
 
   useEffect(() => {
     if (open) {
-      // Set default to today's date in YYYY-MM-DD format
-      const today = new Date();
-      const defaultDate = today.toISOString().split("T")[0];
-      setDueDate(defaultDate);
-      setInvoiceRef("");
+      setRef("");
     }
   }, [open]);
 
   if (!open) return null;
-
-  const canSave = dueDate.trim() !== "";
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -51,41 +44,18 @@ export function InvoiceDueDateSheet({
           <div className="h-1 w-10 bg-slate-300/70 rounded-full mx-auto mb-4" />
 
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
-            Invoice Due Date
+            Quotation Reference No. (Optional)
           </h3>
           <p className="text-sm text-slate-600 mb-6">
-            We need this to remind you before payment becomes overdue.
+            Enter the quotation reference number if available.
           </p>
 
-          {/* Date picker */}
-          <div className="mb-4">
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="
-                w-full rounded-2xl
-                bg-white/80
-                px-4 py-3
-                text-sm text-slate-800
-                shadow-sm
-                outline-none
-                ring-1 ring-slate-200/70
-                focus:ring-2 focus:ring-indigo-400
-                transition
-              "
-            />
-          </div>
-
-          {/* Invoice Reference Input */}
+          {/* Input */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Invoice Reference No. (Optional)
-            </label>
             <input
               type="text"
-              value={invoiceRef}
-              onChange={(e) => setInvoiceRef(e.target.value)}
+              value={ref}
+              onChange={(e) => setRef(e.target.value)}
               placeholder="Enter reference number"
               className="
                 w-full rounded-2xl
@@ -104,24 +74,17 @@ export function InvoiceDueDateSheet({
           {/* Buttons */}
           <div className="space-y-3">
             <button
-              disabled={!canSave}
               onClick={() => {
-                if (canSave) {
-                  onSave(dueDate, invoiceRef.trim() || null);
-                }
+                onSave(ref.trim() || null);
               }}
-              className={`
+              className="
                 w-full h-12 rounded-2xl text-sm font-semibold
+                bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/30
                 transition-all duration-200
                 active:scale-[0.98]
-                ${
-                  canSave
-                    ? "bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/30"
-                    : "bg-slate-200 text-slate-400"
-                }
-              `}
+              "
             >
-              Save & Continue
+              Continue
             </button>
             <button
               onClick={onClose}

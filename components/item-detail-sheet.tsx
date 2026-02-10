@@ -8,6 +8,8 @@ import {
   PaymentTerm,
 } from "./po-payment-terms-sheet";
 import { InvoiceDueDateSheet } from "./invoice-due-date-sheet";
+import { QuotationRefSheet } from "./quotation-ref-sheet";
+import { InvoiceRefSheet } from "./invoice-ref-sheet";
 
 /* ---------- HELPERS ---------- */
 
@@ -103,7 +105,9 @@ export function ItemDetailSheet({
     id: string,
     status: PendingType,
     paymentStage?: "advance" | "balance",
-    invoiceDueDate?: string
+    invoiceDueDate?: string,
+    quotationRef?: string | null,
+    invoiceRef?: string | null
   ) => void;
   onDelete: (id: string) => void;
   onMoveBack: (id: string) => void;
@@ -111,6 +115,8 @@ export function ItemDetailSheet({
 }) {
   const [showPOPaymentModal, setShowPOPaymentModal] = useState(false);
   const [showInvoiceDueDateModal, setShowInvoiceDueDateModal] = useState(false);
+  const [showQuotationRefModal, setShowQuotationRefModal] = useState(false);
+  const [showInvoiceRefModal, setShowInvoiceRefModal] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -174,6 +180,22 @@ export function ItemDetailSheet({
               </span>
               <br />
               <span className="font-medium">{item.rfqNumber}</span>
+            </p>
+          )}
+
+          {item.quotationRef && (
+            <p className="text-sm text-slate-300 mt-1">
+              <span className="text-slate-400">Quotation Reference No.</span>
+              <br />
+              <span className="font-medium">{item.quotationRef}</span>
+            </p>
+          )}
+
+          {item.invoiceRef && (
+            <p className="text-sm text-slate-300 mt-1">
+              <span className="text-slate-400">Invoice Reference No.</span>
+              <br />
+              <span className="font-medium">{item.invoiceRef}</span>
             </p>
           )}
 
@@ -260,15 +282,18 @@ export function ItemDetailSheet({
             {/* Done button */}
             <button
               onClick={() => {
-                if (item.pendingType === "followup") {
+                if (item.pendingType === "quotation") {
+                  // Show quotation reference modal first
+                  setShowQuotationRefModal(true);
+                } else if (item.pendingType === "followup") {
                   // Show PO payment terms modal
                   setShowPOPaymentModal(true);
                 } else if (item.pendingType === "invoice") {
-                  // 100% Advance: no due date needed, move to completed
+                  // 100% Advance: show invoice ref popup, then move to completed
                   if (item.paymentStage === "advance") {
-                    onStatusChange(item.id, "completed");
+                    setShowInvoiceRefModal(true);
                   } else {
-                    // Credit or Partial Advance + Balance: show due date popup, then payment follow-up
+                    // Credit or Partial Advance + Balance: show due date popup (with invoice ref), then payment follow-up
                     setShowInvoiceDueDateModal(true);
                   }
                 } else {
@@ -296,15 +321,18 @@ export function ItemDetailSheet({
           /* Done button - full width when Call/WhatsApp not shown */
           <button
             onClick={() => {
-              if (item.pendingType === "followup") {
+              if (item.pendingType === "quotation") {
+                // Show quotation reference modal first
+                setShowQuotationRefModal(true);
+              } else if (item.pendingType === "followup") {
                 // Show PO payment terms modal
                 setShowPOPaymentModal(true);
               } else if (item.pendingType === "invoice") {
-                // 100% Advance: no due date needed, move to completed
+                // 100% Advance: show invoice ref popup, then move to completed
                 if (item.paymentStage === "advance") {
-                  onStatusChange(item.id, "completed");
+                  setShowInvoiceRefModal(true);
                 } else {
-                  // Credit or Partial Advance + Balance: show due date popup, then payment follow-up
+                  // Credit or Partial Advance + Balance: show due date popup (with invoice ref), then payment follow-up
                   setShowInvoiceDueDateModal(true);
                 }
               } else {
@@ -420,15 +448,36 @@ export function ItemDetailSheet({
         onClose={() => setShowPOPaymentModal(false)}
       />
 
+      {/* Quotation Reference Modal */}
+      <QuotationRefSheet
+        open={showQuotationRefModal}
+        onSave={(quotationRef) => {
+          const nextStage = getNextStage(item.pendingType, item.paymentStage);
+          onStatusChange(item.id, nextStage, item.paymentStage, undefined, quotationRef);
+          setShowQuotationRefModal(false);
+        }}
+        onClose={() => setShowQuotationRefModal(false)}
+      />
+
       {/* Invoice Due Date Modal */}
       <InvoiceDueDateSheet
         open={showInvoiceDueDateModal}
-        onSave={(dueDate) => {
+        onSave={(dueDate, invoiceRef) => {
           const nextStage = getNextStage(item.pendingType, item.paymentStage);
-          onStatusChange(item.id, nextStage, item.paymentStage, dueDate);
+          onStatusChange(item.id, nextStage, item.paymentStage, dueDate, undefined, invoiceRef);
           setShowInvoiceDueDateModal(false);
         }}
         onClose={() => setShowInvoiceDueDateModal(false)}
+      />
+
+      {/* Invoice Reference Modal (for 100% advance) */}
+      <InvoiceRefSheet
+        open={showInvoiceRefModal}
+        onSave={(invoiceRef) => {
+          onStatusChange(item.id, "completed", item.paymentStage, undefined, undefined, invoiceRef);
+          setShowInvoiceRefModal(false);
+        }}
+        onClose={() => setShowInvoiceRefModal(false)}
       />
 
       {/* Delete Confirmation Modal */}

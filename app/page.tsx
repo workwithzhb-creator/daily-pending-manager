@@ -165,6 +165,8 @@ export default function Page() {
       whatsapp: item.whatsapp || undefined,
       rfqNumber: item.rfq_number || undefined,
       completedAt: item.completed_at || undefined,
+      quotationRef: item.quotation_ref || undefined,
+      invoiceRef: item.invoice_ref || undefined,
     }));
 
     setItems(convertedItems);
@@ -512,7 +514,9 @@ export default function Page() {
     id: string,
     status: PendingType,
     paymentStage?: "advance" | "balance",
-    invoiceDueDate?: string
+    invoiceDueDate?: string,
+    quotationRef?: string | null,
+    invoiceRef?: string | null
   ) {
     if (!user) return;
 
@@ -541,6 +545,12 @@ export default function Page() {
       payment_stage: paymentStageToWrite,
       ...(invoiceDueDate !== undefined && {
         invoice_due_date: invoiceDueDate || null,
+      }),
+      ...(quotationRef !== undefined && {
+        quotation_ref: quotationRef || null,
+      }),
+      ...(invoiceRef !== undefined && {
+        invoice_ref: invoiceRef || null,
       }),
       completed_at: completedAtValue || null,
     };
