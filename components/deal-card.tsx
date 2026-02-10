@@ -60,6 +60,46 @@ function getPaymentReminder(dueDate?: string) {
   return null;
 }
 
+function getStagePendingWarning(
+  pendingType: PendingType,
+  stageUpdatedAt?: Date,
+  createdAt?: Date
+): string | null {
+  // Only show for quotation, delivery, and invoice stages
+  if (
+    pendingType !== "quotation" &&
+    pendingType !== "delivery" &&
+    pendingType !== "invoice"
+  ) {
+    return null;
+  }
+
+  // Use stageUpdatedAt, fallback to createdAt
+  const referenceDate = stageUpdatedAt || createdAt;
+  if (!referenceDate) return null;
+
+  const now = new Date();
+  const hoursDiff =
+    (now.getTime() - referenceDate.getTime()) / (1000 * 60 * 60);
+  const daysDiff = Math.floor(hoursDiff / 24);
+
+  // Only show if pending for 24 hours or more
+  if (daysDiff < 1) return null;
+
+  // Return appropriate message based on stage
+  if (pendingType === "quotation") {
+    return `Quotation pending for ${daysDiff} days`;
+  }
+  if (pendingType === "delivery") {
+    return `Delivery pending for ${daysDiff} days`;
+  }
+  if (pendingType === "invoice") {
+    return `Invoice pending for ${daysDiff} days`;
+  }
+
+  return null;
+}
+
 /* ---------- COMPONENT ---------- */
 
 export function DealCard({
@@ -73,6 +113,12 @@ export function DealCard({
     item.pendingType === "paymentFollowup"
       ? getPaymentReminder(item.invoiceDueDate)
       : null;
+
+  const stageWarning = getStagePendingWarning(
+    item.pendingType,
+    item.stageUpdatedAt,
+    item.createdAt
+  );
 
   return (
     <button
@@ -96,6 +142,13 @@ export function DealCard({
           {reminder && (
             <p className="mt-1 text-xs font-medium text-rose-600">
               ⏰ {reminder}
+            </p>
+          )}
+
+          {/* ⏰ STAGE PENDING WARNING */}
+          {stageWarning && (
+            <p className="mt-1 text-xs font-medium text-rose-600">
+              ⏰ {stageWarning}
             </p>
           )}
         </div>
