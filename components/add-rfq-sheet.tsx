@@ -178,6 +178,9 @@ export function AddRFQSheet({
                 placeholder="Note (Optional)"
                 className="w-full rounded-xl border px-4 py-3 text-sm"
               />
+              <p className="text-xs text-slate-400 mt-1">
+  Tip: Add short material reference & project name so you don’t forget this RFQ.
+</p>
             </div>
           </div>
 
